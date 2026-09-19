@@ -191,6 +191,7 @@ pre.sql{background:#3B4437;color:#DCE5D3;border-radius:9px;padding:10px;font-siz
   <nav>
     <button data-page="entry" class="active">📝 开单</button>
     <button data-page="ledger">📒 台账</button>
+    <button data-page="recycle" id="navRecycle">🗑 回收站</button>
     <button data-page="dash">📊 仪表盘</button>
     <button data-page="settings">⚙️ 设置</button>
   </nav>
@@ -275,6 +276,23 @@ pre.sql{background:#3B4437;color:#DCE5D3;border-radius:9px;padding:10px;font-siz
   </div>
 </section>
 
+<!-- ================= 回收站 ================= -->
+<section id="page-recycle" class="page">
+  <div class="card">
+    <h3>回收站
+      <button class="btn sm danger hidden" id="btnEmptyRecycle">🗑 清空回收站（彻底删除）</button>
+    </h3>
+    <div class="pv-hint" style="margin:0 0 8px">台账中「删除」的单据会移入这里并<b>同步到所有设备</b>；可随时「恢复」回台账，或「彻底删除」。
+      彻底删除同样会双端同步（另一端刷新页面后该单据从其回收站消失），且<b>不可恢复</b>。</div>
+    <div class="table-scroll">
+      <table class="tb">
+        <thead><tr><th>删除时间</th><th>单据日期</th><th>经费性质</th><th>经办人</th><th>项目数</th><th style="text-align:right">金额</th><th>操作</th></tr></thead>
+        <tbody id="recycleBody"></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
 <!-- ================= 仪表盘 ================= -->
 <section id="page-dash" class="page">
   <div class="card">
@@ -339,7 +357,7 @@ pre.sql{background:#3B4437;color:#DCE5D3;border-radius:9px;padding:10px;font-siz
         <button class="btn sm" id="btnSbPull">⬇ 从云端拉取</button>
       </div>
       <div id="sbStatus"></div>
-      <div class="pv-hint">同步机制：保存单据自动上传 ✔；打开 / 刷新页面约 1 秒后自动拉取最新（可在上方关闭）；「⬇ 从云端拉取」随时可手动使用。正在填写的表单不会被同步打断，同一张单以最后修改时间为准，不会互相覆盖。</div>
+      <div class="pv-hint">同步机制：保存自动上传 ✔；<b>删除 / 恢复 / 彻底删除均实时同步</b> ✔；打开或刷新页面约 1 秒后自动拉取最新（可在上方关闭）。正在填写的表单不会被同步打断；同一张单以最后修改时间为准。</div>
       <div class="pv-hint">在 Supabase SQL Editor 中执行：</div>
       <pre class="sql">create table if not exists records (
   id text primary key,
@@ -362,7 +380,7 @@ create policy "all" on records for all using (true) with check (true);</pre>
 <script>
 'use strict';
 /* ================= 版本 ================= */
-const APP_VERSION='v1.7.3';
+const APP_VERSION='v1.8.0';
 
 /* ================= 工具 ================= */
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
@@ -374,6 +392,7 @@ const r2=n=>Math.round(n*100)/100;
 const fmt2=n=>(Number(n)||0).toFixed(2);
 const money=n=>'¥'+(Number(n)||0).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtDateCN=iso=>{if(!iso)return'';const[y,m,d]=iso.split('-');return `${y}/${+m}/${+d}`};
+const fmtDT=t=>{if(!t)return'';const d=new Date(t);return d.toLocaleDateString('zh-CN',{month:'2-digit',day:'2-digit'})+' '+d.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})};
 const personOf=r=>(r.agent&&r.agent.trim())||(r.teacher&&r.teacher.trim())||'';
 function toUpperMoney(money){
   var cnNums=['零','壹','贰','叁','肆','伍','陆','柒','捌','玖'],cnIntRadice=['','拾','佰','仟'],
@@ -415,6 +434,15 @@ const dash={year:String(new Date().getFullYear()),type:''};
 let draft=null,editingId=null;const chartRefs={};
 let printRec=null;
 function persist(){localStorage.setItem(LS_REC,JSON.stringify(records));localStorage.setItem(LS_SET,JSON.stringify(settings))}
+
+/* ===== 记录状态（v1.8.0 回收站机制）=====
+   deletedAt 有值 = 在回收站；purgedAt 有值 = 已彻底删除（墓碑，仅用于同步，不再显示） */
+const activeRecords=()=>records.filter(r=>!r.deletedAt&&!r.purgedAt);
+const recycleBinRecords=()=>records.filter(r=>r.deletedAt&&!r.purgedAt).sort((a,b)=>(b.deletedAt||0)-(a.deletedAt||0));
+function pushIfCloud(){const c=sbCfg();if(c.url&&c.key)sbPush(true)}
+function recycleRecord(rec){rec.deletedAt=Date.now();rec.updatedAt=Date.now();persist();refreshData();toast('已移入回收站，可随时恢复');pushIfCloud()}
+function restoreRecord(rec){delete rec.deletedAt;rec.updatedAt=Date.now();persist();refreshData();toast('已恢复到台账');pushIfCloud()}
+function purgeRecord(rec){rec.purgedAt=Date.now();rec.updatedAt=Date.now();persist();refreshData();toast('已彻底删除');pushIfCloud()}
 
 /* ===== 内嵌保存状态 ===== */
 function setSaveStatus(type,msg){
@@ -639,10 +667,10 @@ function startEdit(rec){
 }
 
 /* ================= 台账 ================= */
-function yearsList(){const s=new Set(records.map(r=>(r.date||'').slice(0,4)));s.add(String(new Date().getFullYear()));return[...s].filter(Boolean).sort().reverse()}
-function agentList(){return[...new Set(records.map(personOf).filter(Boolean))].sort()}
+function yearsList(){const s=new Set(activeRecords().map(r=>(r.date||'').slice(0,4)));s.add(String(new Date().getFullYear()));return[...s].filter(Boolean).sort().reverse()}
+function agentList(){return[...new Set(activeRecords().map(personOf).filter(Boolean))].sort()}
 function filtered(){
-  return records.filter(r=>{
+  return activeRecords().filter(r=>{
     if(filters.year&&(r.date||'').slice(0,4)!==filters.year)return false;
     if(filters.month&&+(r.date||'').slice(5,7)!==+filters.month)return false;
     if(filters.type&&r.type!==filters.type)return false;
@@ -674,10 +702,27 @@ function renderLedger(){
       <td><span class="badge b-${esc(r.type)}">${esc(r.type)}</span></td>
       <td>${esc(personOf(r))||'—'}</td>
       <td>${r.items.length}</td><td class="num"><b>${money(r.total)}</b></td>
-      <td style="white-space:nowrap"><button class="btn sm" data-act="print">打印</button><button class="btn sm" data-act="edit">编辑</button><button class="btn sm danger" data-act="del">删除</button></td>
+      <td style="white-space:nowrap"><button class="btn sm" data-act="print">打印</button><button class="btn sm" data-act="edit">编辑</button><button class="btn sm danger" data-act="del" title="移入回收站">删除</button></td>
     </tr>
     <tr class="ldetail hidden"><td colspan="6">${detailHTML(r)}</td></tr>`).join('')
   :`<tr><td colspan="6" class="empty">当前筛选条件下暂无单据</td></tr>`;
+}
+
+/* ================= 回收站 ================= */
+function renderRecycle(){
+  const list=recycleBinRecords();
+  $('#navRecycle').textContent='🗑 回收站'+(list.length?`（${list.length}）`:'');
+  $('#btnEmptyRecycle').classList.toggle('hidden',!list.length);
+  $('#recycleBody').innerHTML=list.length?list.map(r=>`
+    <tr data-id="${r.id}">
+      <td>${fmtDT(r.deletedAt)}</td>
+      <td>${esc(r.date)}</td>
+      <td><span class="badge b-${esc(r.type)}">${esc(r.type)}</span></td>
+      <td>${esc(personOf(r))||'—'}</td>
+      <td>${r.items.length}</td><td class="num"><b>${money(r.total)}</b></td>
+      <td style="white-space:nowrap"><button class="btn sm" data-act="restore">恢复</button><button class="btn sm danger" data-act="purge">彻底删除</button></td>
+    </tr>`).join('')
+  :`<tr><td colspan="7" class="empty">回收站为空</td></tr>`;
 }
 
 /* ================= 仪表盘 ================= */
@@ -685,7 +730,7 @@ function renderDash(){
   const selY=$('#dashYear');
   selY.innerHTML=yearsList().map(y=>`<option value="${y}" ${y===dash.year?'selected':''}>${y} 年</option>`).join('');
   $('#dashType').value=dash.type;
-  const list=records.filter(r=>(r.date||'').slice(0,4)===dash.year&&(!dash.type||r.type===dash.type));
+  const list=activeRecords().filter(r=>(r.date||'').slice(0,4)===dash.year&&(!dash.type||r.type===dash.type));
   const sum=r2(list.reduce((s,r)=>s+r.total,0));
   $('#dsCount').textContent=list.length;
   $('#dsSum').textContent=money(sum);
@@ -881,27 +926,39 @@ async function sbPush(silent){
     setSbStatus('✔ 已上传 '+body.length+' 条 · '+new Date().toLocaleTimeString(),'ok');
   }catch(e){setSbStatus('✘ 上传失败：'+e.message,'err');if(!silent)toast('云端上传失败','err')}
 }
-/* v1.7.3：sbPull 支持 silent 模式（打开页面自动拉取用，静默、不打断填写） */
+/* v1.8.0：拉取合并支持删除同步——deletedAt/purgedAt 随 payload 同步，云端较新即覆盖本地状态 */
 async function sbPull(silent){
   const c=sbCfg();if(!c.url||!c.key){if(!silent)setSbStatus('未配置云端','err');return}
   if(!silent)setSbStatus('拉取中…');
   try{
     const r=await fetch(`${c.url}/rest/v1/${c.table}?select=id,payload,updated_at`,{headers:sbHeaders()});
     if(!r.ok)throw new Error(r.status+' '+(await r.text()).slice(0,140));
-    const rows=await r.json();const byId=new Map(records.map(x=>[x.id,x]));let added=0,merged=0;
-    rows.forEach(row=>{const rec=row.payload;if(!rec||!rec.id)return;const loc=byId.get(rec.id);
-      if(!loc){records.push(rec);byId.set(rec.id,rec);added++}
-      else if((rec.updatedAt||0)>(loc.updatedAt||0)){Object.assign(loc,rec);merged++}});
+    const rows=await r.json();const byId=new Map(records.map(x=>[x.id,x]));let added=0,merged=0,dels=0;
+    rows.forEach(row=>{
+      const rec=row.payload;if(!rec||!rec.id)return;
+      const loc=byId.get(rec.id);
+      if(!loc){
+        if(!rec.purgedAt){records.push(rec);byId.set(rec.id,rec);added++}   /* 墓碑：本地从未有过的已删单据，无需存 */
+      }else if((rec.updatedAt||0)>(loc.updatedAt||0)){
+        const wasActive=!loc.deletedAt&&!loc.purgedAt;
+        Object.assign(loc,rec);
+        if(wasActive&&(loc.deletedAt||loc.purgedAt))dels++;
+        merged++
+      }
+    });
     if(added||merged){
       persist();refreshData();
-      /* 用户正在填写/编辑时只刷新台账，不动表单与预览，避免打断 */
       const busy=!!(editingId||(draft&&(draft.type||(draft.agent||'').trim()||draft.items.some(it=>(it.name||'').trim()))));
       if(!busy){renderForm();renderPreview()}
     }
+    const parts=[];
+    if(added)parts.push(`新增 ${added}`);
+    if(merged)parts.push(`更新 ${merged}`);
+    if(dels)parts.push(`删除 ${dels}`);
     if(silent){
-      if(added||merged)toast(`已自动同步：新增 ${added} 单，更新 ${merged} 单`);
+      if(parts.length)toast('已自动同步：'+parts.join('，'));
     }else{
-      setSbStatus(`✔ 拉取完成：新增 ${added}，更新 ${merged}`,'ok');
+      setSbStatus('✔ 拉取完成：'+(parts.length?parts.join('，'):'无变化'),'ok');
     }
   }catch(e){
     if(!silent)setSbStatus('✘ 拉取失败：'+e.message,'err');
@@ -917,16 +974,18 @@ async function backupJSON(){
 }
 function refreshData(){
   const dl=(id,arr)=>{$(id).innerHTML=[...new Set(arr)].filter(Boolean).sort().map(v=>`<option value="${esc(v)}">`).join('')};
-  dl('#dlAgents',records.map(personOf));
-  dl('#dlNames',records.flatMap(r=>r.items.map(i=>i.name)));
-  renderLedger();renderDash();
+  dl('#dlAgents',activeRecords().map(personOf));
+  dl('#dlNames',activeRecords().flatMap(r=>r.items.map(i=>i.name)));
+  renderLedger();renderRecycle();renderDash();
 }
 
 /* ================= 页面切换与事件绑定 ================= */
 function switchPage(p){
   $$('nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===p));
   $$('.page').forEach(s=>s.classList.toggle('active',s.id==='page-'+p));
-  if(p==='ledger')renderLedger();if(p==='dash')renderDash();
+  if(p==='ledger')renderLedger();
+  if(p==='recycle')renderRecycle();
+  if(p==='dash')renderDash();
   if(p==='entry')requestAnimationFrame(()=>requestAnimationFrame(fitPreview));
 }
 function applyPrintLayout(){
@@ -972,8 +1031,8 @@ function bind(){
   $('#btnLedgerReset').onclick=()=>{Object.assign(filters,{year:'',month:'',type:'',agent:''});renderLedger()};
   $('#btnExportLedger').onclick=()=>{const l=filtered();if(!l.length){toast('当前筛选无数据','err');return}
     exportLedgerExcel(l,`特种耗材台账-${filters.year||'全部'}${filters.month?filters.month+'月':''}.xlsx`)};
-  $('#btnExportAll').onclick=()=>{if(!records.length){toast('暂无数据','err');return}
-    exportLedgerExcel(records,'特种耗材台账-全部.xlsx')};
+  $('#btnExportAll').onclick=()=>{const l=activeRecords();if(!l.length){toast('暂无数据','err');return}
+    exportLedgerExcel(l,'特种耗材台账-全部.xlsx')};
   $('#btnTpl2').onclick=downloadTemplate;
   $('#dashYear').onchange=e=>{dash.year=e.target.value;renderDash()};
   $('#dashType').onchange=e=>{dash.type=e.target.value;renderDash()};
@@ -985,11 +1044,25 @@ function bind(){
       const act=btn.dataset.act;
       if(act==='print')printSlips(rec);
       else if(act==='edit')startEdit(rec);
-      else if(act==='del'&&confirm('确定删除该单据？')){records=records.filter(r=>r.id!==tr.dataset.id);persist();refreshData();toast('已删除')}
+      else if(act==='del'&&confirm('确定删除该单据？将移入回收站（同步到所有设备），可随时恢复或彻底删除。'))recycleRecord(rec);
       return;
     }
     if(tr){const det=tr.nextElementSibling;det&&det.classList.toggle('hidden')}
   });
+  /* 回收站 */
+  $('#recycleBody').addEventListener('click',e=>{
+    const btn=e.target.closest('button[data-act]');if(!btn)return;
+    const tr=btn.closest('tr');const rec=records.find(r=>r.id===tr.dataset.id);if(!rec)return;
+    if(btn.dataset.act==='restore')restoreRecord(rec);
+    else if(btn.dataset.act==='purge'&&confirm('彻底删除后无法恢复（该操作会同步到所有设备），确定？'))purgeRecord(rec);
+  });
+  $('#btnEmptyRecycle').onclick=()=>{
+    const list=recycleBinRecords();
+    if(!list.length)return;
+    if(!confirm(`确定清空回收站？将彻底删除 ${list.length} 个单据，无法恢复（会同步到所有设备）。`))return;
+    list.forEach(r=>{r.purgedAt=Date.now();r.updatedAt=Date.now()});
+    persist();refreshData();toast('回收站已清空');pushIfCloud();
+  };
   /* 设置 */
   $('#setDept').oninput=e=>{settings.dept=e.target.value;persist();renderPreview()};
   $('#setLayout').onchange=e=>{settings.layout=e.target.value;persist();applyPrintLayout();renderPreview();toast('已切换版式：'+(settings.layout==='portrait'?'竖版三联·横向裁剪':'横版三联并排'))};
@@ -1018,8 +1091,8 @@ function bind(){
     rd.readAsText(f);e.target.value='';
   };
   $('#btnWipe').onclick=()=>{
-    if(!confirm('确定清空本机所有单据数据？（云端与备份不受影响）'))return;
-    if(!confirm('再次确认：此操作不可恢复！'))return;
+    if(!confirm('确定清空本机所有单据数据？（云端与备份不受影响；重新拉取可恢复）'))return;
+    if(!confirm('再次确认：此操作将清空本机台账与回收站记录！'))return;
     records=[];persist();refreshData();draft=newDraft();editingId=null;printRec=null;renderForm();renderPreview();setSaveStatus(null);toast('已清空');
   };
 }
@@ -1027,12 +1100,11 @@ function bind(){
 /* ================= 启动 ================= */
 (function init(){
   draft=newDraft();
-  $('#verTop').textContent=APP_VERSION+' · 三联单 · 台账 · 仪表盘';
+  $('#verTop').textContent=APP_VERSION+' · 三联单 · 台账 · 回收站 · 仪表盘';
   $('#verSet').textContent='当前版本：'+APP_VERSION;
   console.log('%c特种耗材出入库系统 '+APP_VERSION,'color:#5C8A64;font-weight:bold');
   bind();applyPrintLayout();applySettingsUI();
   renderForm();renderPreview();refreshData();
-  /* v1.7.3：打开页面约 1 秒后自动从云端拉取最新（可在设置中关闭） */
   if(settings.autoPull&&settings.sbUrl&&settings.sbKey)setTimeout(()=>sbPull(true),1000);
 })();
 </script>
