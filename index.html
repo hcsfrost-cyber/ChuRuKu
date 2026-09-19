@@ -36,7 +36,7 @@ main{max-width:1180px;margin:0 auto;padding:14px}
   padding:14px 16px;box-shadow:0 2px 6px rgba(95,115,90,.06);margin-bottom:14px}
 .card h3{font-size:15px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;color:var(--pri-deep)}
 /* ===== 表单 ===== */
-.form-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.form-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
 .fld span{display:block;font-size:12px;color:var(--sub);margin-bottom:4px}
 .req{color:var(--danger);font-weight:700}
 input,select{width:100%;border:1px solid #CBD2BC;border-radius:9px;padding:8px 10px;font-size:14px;
@@ -58,7 +58,7 @@ input::placeholder{color:#ABB3A0}
 .btn.primary{background:var(--pri);border-color:var(--pri);color:#fff}
 .btn.primary:hover{background:var(--pri-deep);color:#fff}
 .btn.primary.saved{background:var(--pri-deep);border-color:var(--pri-deep);color:#fff}
-.btn:disabled{cursor:default;opacity:.9}
+.btn:disabled{cursor:default;opacity:.6}
 .btn.danger{background:var(--danger-soft);border-color:#E4CCC8;color:var(--danger)}
 .btn.danger:hover{background:#EFDBD7;color:#A5534B}
 .btn.sm{padding:5px 10px;font-size:12px;border-radius:7px}
@@ -79,7 +79,7 @@ input::placeholder{color:#ABB3A0}
 .grand .cap{color:#8A6B3A;font-size:13px}
 /* ===== 徽章/芯片 ===== */
 .badge{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;color:#fff}
-.b-普通{background:#6E9A78}.b-横向{background:#C29A57}.b-科研{background:#7FA8A0}
+.b-普通{background:#6E9A78}.b-横向{background:#C29A57}.b-科研{background:#7FA8A0}.b-未标注{background:#8A9182}
 .chips{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
 .chip{padding:5px 13px;border-radius:999px;font-size:13px;color:#fff}
 .c0{background:#6E9A78}.c1{background:#C29A57}.c2{background:#7FA8A0}.c3{background:#7C8577}
@@ -87,9 +87,9 @@ input::placeholder{color:#ABB3A0}
   background:#F0F2E4;color:var(--sub);border:1px solid var(--bd)}
 .pv-mode.saved{background:var(--pri-soft);color:var(--pri-deep);border-color:#C9DCC4}
 /* ===== 台账表格 ===== */
-.filters{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:10px}
+.filters{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:10px}
 .table-scroll{overflow-x:auto}
-table.tb{width:100%;border-collapse:collapse;min-width:720px}
+table.tb{width:100%;border-collapse:collapse;min-width:800px}
 .tb th{background:#EFF2E2;font-size:13px;color:#5C6553;text-align:left;padding:9px 10px;border-bottom:1px solid var(--bd);white-space:nowrap}
 .tb td{padding:9px 10px;border-bottom:1px solid #E7EADB;font-size:13px;vertical-align:middle}
 .tb tr.lrow{cursor:pointer}.tb tr.lrow:hover{background:#F2F5E8}
@@ -99,6 +99,10 @@ tr.ldetail td{background:#F4F6EA}
 .d-items table{width:100%;border-collapse:collapse;font-size:12px;margin:4px 0}
 .d-items th,.d-items td{border:1px solid var(--bd);padding:4px 8px;text-align:center}
 .empty{color:var(--sub);text-align:center;padding:26px 0}
+/* 分组 */
+.grp-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:2px 0 8px;font-size:13px}
+#grpMgr{width:auto;max-width:180px;padding:5px 8px;font-size:13px}
+.grp-sel{width:auto;max-width:140px;font-size:12px;padding:4px 6px;border-radius:7px}
 /* ===== 仪表盘 ===== */
 .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px}
 .stat .stat-l{font-size:13px;color:var(--sub)}
@@ -190,6 +194,7 @@ pre.sql{background:#3B4437;color:#DCE5D3;border-radius:9px;padding:10px;font-siz
   <h1>📋 特种耗材出入库 <small id="verTop"></small></h1>
   <nav>
     <button data-page="entry" class="active">📝 开单</button>
+    <button data-page="import">📥 导入</button>
     <button data-page="ledger">📒 台账</button>
     <button data-page="recycle" id="navRecycle">🗑 回收站</button>
     <button data-page="dash">📊 仪表盘</button>
@@ -216,6 +221,7 @@ pre.sql{background:#3B4437;color:#DCE5D3;border-radius:9px;padding:10px;font-siz
         </select>
       </div>
       <div class="fld"><span>经办人 <i class="req">*</i></span><input id="fAgent" list="dlAgents" placeholder="用于文件命名与台账"></div>
+      <div class="fld"><span>分组</span><select id="fGroup"></select></div>
     </div>
   </div>
 
@@ -250,6 +256,23 @@ pre.sql{background:#3B4437;color:#DCE5D3;border-radius:9px;padding:10px;font-siz
   </div>
 </section>
 
+<!-- ================= 导入旧台账 ================= -->
+<section id="page-import" class="page">
+  <div class="card">
+    <h3>📄 Excel / CSV 批量导入（旧电子台账）</h3>
+    <div class="pv-hint" style="margin:0 0 10px">
+      支持 .xlsx / .xls / .csv。表头需含：<b>日期</b>、经办人（有则识别，没有可留空）、<b>名称</b>、型号规格（可选）、<b>数量</b>、单位（可选）、单价 / 总价（金额）——列顺序不限、名称可近似匹配；<br>
+      · <b>无需「经费性质」列</b>：旧台账没记也没关系，导入时可用下方选项<b>统一指定</b>（默认留空，之后在台账中编辑补充）；<br>
+      · 相同「日期 + 经办人」的行自动合并为一张单据；无表头则按「日期 / 名称 / 型号规格 / 数量 / 单位 / 单价 / 总价」列顺序解析；<br>
+      · 导入的单据默认存入「<b>存档导入</b>」组（可改），与网页录入的单据区分开，之后可随时互移分组。
+    </div>
+    <label class="btn primary" style="display:inline-block">选择 Excel / CSV 文件
+      <input type="file" id="xlFile" accept=".xlsx,.xls,.csv" class="hidden">
+    </label>
+    <div id="xlPrev" style="margin-top:12px"></div>
+  </div>
+</section>
+
 <!-- ================= 台账 ================= -->
 <section id="page-ledger" class="page">
   <div class="card">
@@ -262,14 +285,23 @@ pre.sql{background:#3B4437;color:#DCE5D3;border-radius:9px;padding:10px;font-siz
     <div class="filters">
       <div class="fld"><span>年份</span><select id="fYear"></select></div>
       <div class="fld"><span>月份</span><select id="fMonth"></select></div>
-      <div class="fld"><span>经费性质</span><select id="fTypeF"><option value="">全部</option><option>普通</option><option>横向</option><option>科研</option></select></div>
+      <div class="fld"><span>经费性质</span><select id="fTypeF"><option value="">全部</option><option>普通</option><option>横向</option><option>科研</option><option value="__none__">未标注</option></select></div>
       <div class="fld"><span>经办人</span><select id="fTeacherF"></select></div>
+      <div class="fld"><span>分组</span><select id="fGroupF"></select></div>
       <div class="fld"><span>&nbsp;</span><button class="btn" id="btnLedgerReset" style="width:100%">重置筛选</button></div>
+    </div>
+    <div class="grp-bar">
+      <span style="font-size:12px;color:var(--sub)">分组管理：</span>
+      <select id="grpMgr"></select>
+      <button class="btn sm" id="btnGrpNew">＋ 新建组</button>
+      <button class="btn sm" id="btnGrpRename">✎ 改名</button>
+      <button class="btn sm danger" id="btnGrpDel">🗑 删组</button>
+      <span style="font-size:12px;color:var(--sub)">（组内单据在表格「组」列下拉可互移；新建 / 改名 / 删除 / 移动均双端同步）</span>
     </div>
     <div class="chips" id="ledgerStats"></div>
     <div class="table-scroll">
       <table class="tb">
-        <thead><tr><th>日期</th><th>经费性质</th><th>经办人</th><th>项目数</th><th style="text-align:right">金额</th><th>操作</th></tr></thead>
+        <thead><tr><th>日期</th><th>经费性质</th><th>经办人</th><th>组</th><th>项目数</th><th style="text-align:right">金额</th><th>操作</th></tr></thead>
         <tbody id="ledgerBody"></tbody>
       </table>
     </div>
@@ -299,7 +331,7 @@ pre.sql{background:#3B4437;color:#DCE5D3;border-radius:9px;padding:10px;font-siz
     <h3>统计范围
       <span style="display:flex;gap:8px;align-items:center">
         <select id="dashYear" style="width:auto"></select>
-        <select id="dashType" style="width:auto"><option value="">全部性质</option><option>普通</option><option>横向</option><option>科研</option></select>
+        <select id="dashType" style="width:auto"><option value="">全部性质</option><option>普通</option><option>横向</option><option>科研</option><option value="__none__">未标注</option></select>
       </span>
     </h3>
     <div class="cards">
@@ -354,8 +386,8 @@ pre.sql{background:#3B4437;color:#DCE5D3;border-radius:9px;padding:10px;font-siz
         <button class="btn sm" id="btnSbPull">⬇ 立即同步</button>
       </div>
       <div id="sbStatus"></div>
-      <div class="pv-hint">同步机制（配置好后全自动）：<b>保存 / 删除 / 恢复 / 彻底删除</b>时只把改动的单据即时上传（增量，不会用旧数据覆盖云端）；
-        <b>打开页面、从后台切回（手机解锁 / 电脑切回标签页）、切换到台账 / 回收站 / 仪表盘</b>时自动与云端双向对齐，两端差异会被自动修复。
+      <div class="pv-hint">同步机制（配置好后全自动）：<b>保存 / 删除 / 恢复 / 彻底删除 / 导入 / 移动分组</b>时只把改动的单据即时上传（增量，不会用旧数据覆盖云端）；
+        <b>打开页面、从后台切回、切换到台账 / 回收站 / 仪表盘</b>时自动与云端双向对齐；<b>分组清单本身也会同步</b>。
         正在填写的表单不会被同步打断；同一张单以最后修改时间为准。</div>
       <div class="pv-hint">在 Supabase SQL Editor 中执行：</div>
       <pre class="sql">create table if not exists records (
@@ -379,7 +411,7 @@ create policy "all" on records for all using (true) with check (true);</pre>
 <script>
 'use strict';
 /* ================= 版本 ================= */
-const APP_VERSION='v1.8.1';
+const APP_VERSION='v1.9.1';
 
 /* ================= 工具 ================= */
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
@@ -428,15 +460,44 @@ const LS_REC='tkc_records_v1',LS_SET='tkc_settings_v1';
 function load(k,d){try{const v=JSON.parse(localStorage.getItem(k));return v??d}catch(e){return d}}
 let records=load(LS_REC,[]);
 let settings=Object.assign({dept:'特种设备学院',layout:'portrait',sbUrl:'',sbKey:'',sbTable:'records',autoPull:true},load(LS_SET,{}));
-const filters={year:String(new Date().getFullYear()),month:'',type:'',agent:''};
+const filters={year:String(new Date().getFullYear()),month:'',type:'',agent:'',group:''};
 const dash={year:String(new Date().getFullYear()),type:''};
 let draft=null,editingId=null;const chartRefs={};
 let printRec=null;
 function persist(){localStorage.setItem(LS_REC,JSON.stringify(records));localStorage.setItem(LS_SET,JSON.stringify(settings))}
 
-/* ===== 记录状态（v1.8.0 回收站机制）=====
-   deletedAt 有值 = 在回收站；purgedAt 有值 = 已彻底删除（墓碑，仅用于同步，不再显示）
-   v1.8.1：上传只推"本端刚改动"的单据（增量），杜绝旧数据覆盖云端 */
+/* ===== 分组：本地存储，云端以特殊行 __groups__ 同步 ===== */
+const LS_GRP='tkc_groups_v1';
+const DEFAULT_GROUP='网页录入',IMPORT_GROUP='存档导入';
+function normalizeGroups(names){
+  const seen=new Set();const out=[];
+  [DEFAULT_GROUP,IMPORT_GROUP].concat(names||[]).forEach(n=>{if(n&&!seen.has(n)){seen.add(n);out.push({name:n})}});
+  return out;
+}
+let groups=(()=>{const g=load(LS_GRP,null);return Array.isArray(g)&&g.length?normalizeGroups(g.map(x=>x&&x.name).filter(Boolean)):[{name:DEFAULT_GROUP},{name:IMPORT_GROUP}]})();
+let groupsUpdatedAt=load('tkc_groups_t',0)||0;
+const groupOf=r=>r.group||DEFAULT_GROUP;
+function allGroups(){
+  const s=new Set([DEFAULT_GROUP,IMPORT_GROUP]);
+  (groups||[]).forEach(g=>{if(g&&g.name)s.add(g.name)});
+  records.forEach(r=>{if(r.group)s.add(r.group)});
+  return[...s];
+}
+function persistGroups(touch){
+  try{localStorage.setItem(LS_GRP,JSON.stringify(groups))}catch(e){}
+  if(touch){groupsUpdatedAt=Date.now();try{localStorage.setItem('tkc_groups_t',String(groupsUpdatedAt))}catch(e){}}
+}
+function groupsEntity(){return{id:'__groups__',__meta:'groups',groups:groups.map(g=>g.name),updatedAt:groupsUpdatedAt||Date.now()}}
+function pushMeta(){const c=sbCfg();if(c.url&&c.key)sbUpsert([groupsEntity()])}
+function moveRecordToGroup(rec,name){
+  if(!name||groupOf(rec)===name)return;
+  rec.group=name;rec.updatedAt=Date.now();
+  persist();refreshData();pushRecs([rec]);
+  toast('已移入「'+name+'」');
+}
+
+/* ===== 记录状态（回收站机制）=====
+   deletedAt 有值 = 在回收站；purgedAt 有值 = 已彻底删除（墓碑，仅用于同步） */
 const activeRecords=()=>records.filter(r=>!r.deletedAt&&!r.purgedAt);
 const recycleBinRecords=()=>records.filter(r=>r.deletedAt&&!r.purgedAt).sort((a,b)=>(b.deletedAt||0)-(a.deletedAt||0));
 function pushRecs(recs){const c=sbCfg();if(c.url&&c.key&&recs&&recs.length)sbPush(true,recs)}
@@ -454,11 +515,11 @@ function markDirty(){setSaveStatus('dirty','● 内容已修改，尚未保存 �
 function flagInvalid(el){if(!el)return;el.classList.add('invalid');setTimeout(()=>el.classList.remove('invalid'),2500)}
 
 /* ===== 图表护眼配色 ===== */
-const CH_COLORS={green:'#6E9A78',amber:'#C29A57',teal:'#7FA8A0',grid:'#E2E6D4',tick:'#8A9182'};
+const CH_COLORS={green:'#6E9A78',amber:'#C29A57',teal:'#7FA8A0',gray:'#7C8577',grid:'#E2E6D4',tick:'#8A9182'};
 
 /* ================= 表单 ================= */
 const emptyItem=()=>({name:'',spec:'',qty:'',unit:'件',price:'',total:''});
-const newDraft=()=>({date:todayISO(),type:'',agent:'',items:[emptyItem()]});
+const newDraft=()=>({date:todayISO(),type:'',agent:'',group:DEFAULT_GROUP,items:[emptyItem()]});
 function draftRec(){return{date:draft.date,type:draft.type,agent:draft.agent,
   dept:settings.dept,items:draft.items,total:grandTotal()}}
 
@@ -499,6 +560,10 @@ function grandTotal(){return r2(draft.items.reduce((s,it)=>{
 function renderGrand(){const g=grandTotal();$('#grandAmt').textContent=money(g);$('#grandCap').textContent=g?'大写：'+toUpperMoney(g):''}
 function renderForm(){
   $('#fDate').value=draft.date;$('#fType').value=draft.type;$('#fAgent').value=draft.agent;
+  const gsel=$('#fGroup');
+  if(gsel){const cur=draft.group||DEFAULT_GROUP;
+    gsel.innerHTML=allGroups().map(g=>`<option ${g===cur?'selected':''}>${esc(g)}</option>`).join('');
+    if(!allGroups().includes(cur))gsel.value=DEFAULT_GROUP;}
   renderItems();renderGrand();
   const eb=$('#editBanner');
   if(editingId){const rec=records.find(r=>r.id===editingId);eb.classList.remove('hidden');
@@ -623,7 +688,8 @@ function collectRecord(){
     items.push({name,spec,qty:Q,unit,price:P,total:T});
   }
   if(!items.length)return{ok:false,msg:'请至少填写一项耗材',focus:undefined};
-  return{ok:true,record:{date:draft.date,type:draft.type,agent:(draft.agent||'').trim(),items,total:r2(items.reduce((s,x)=>s+x.total,0))}};
+  const grp=(draft.group&&allGroups().includes(draft.group))?draft.group:DEFAULT_GROUP;
+  return{ok:true,record:{date:draft.date,type:draft.type,agent:(draft.agent||'').trim(),group:grp,items,total:r2(items.reduce((s,x)=>s+x.total,0))}};
 }
 function onSave(){
   const res=collectRecord();
@@ -644,7 +710,7 @@ function onSave(){
     rec.id=uid();rec.createdAt=Date.now();records.push(rec);
   }
   persist();
-  draft=newDraft();draft.type=rec.type;draft.agent=rec.agent;
+  draft=newDraft();draft.type=rec.type;draft.agent=rec.agent;draft.group=rec.group;
   printRec=rec;
   refreshData();renderForm();renderPreview();
 
@@ -652,18 +718,66 @@ function onSave(){
   btn.classList.add('saved');btn.textContent='✔ 已保存';btn.disabled=true;
   setTimeout(()=>{btn.classList.remove('saved');btn.textContent='💾 保存并生成三联单';btn.disabled=false},1800);
   const now=new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'});
-  setSaveStatus('ok',`✔ ${wasEdit?'单据已更新':'已保存新单据'} · ${rec.date} · ${rec.type} · 经办人 ${rec.agent||'—'} · ${rec.items.length} 项耗材 · 合计 ${money(rec.total)}（${now}）· 下方三联单即为此单，可直接打印`);
+  setSaveStatus('ok',`✔ ${wasEdit?'单据已更新':'已保存新单据'} · ${rec.date} · ${rec.type} · 经办人 ${rec.agent||'—'} · 组 ${rec.group} · ${rec.items.length} 项耗材 · 合计 ${money(rec.total)}（${now}）· 下方三联单即为此单，可直接打印`);
   const pvCard=$('#pvSlips').closest('.card');
   pvCard.classList.remove('flash');void pvCard.offsetWidth;pvCard.classList.add('flash');
 
-  pushRecs([rec]);   /* v1.8.1：只推送刚保存的这一张（配置了云端即自动） */
+  pushRecs([rec]);
 }
 function startEdit(rec){
   editingId=rec.id;printRec=null;
-  draft={date:rec.date,type:rec.type||'',agent:personOf(rec),
+  draft={date:rec.date,type:rec.type||'',agent:personOf(rec),group:groupOf(rec),
     items:rec.items.map(it=>({name:it.name,spec:it.spec,qty:String(it.qty),unit:it.unit,price:String(it.price),total:String(it.total)}))};
   switchPage('entry');renderForm();renderPreview();
-  setSaveStatus('dirty','● 编辑模式：修改后点击「保存并生成三联单」将覆盖原单据');
+  setSaveStatus('dirty','● 编辑模式：修改后点击「保存并生成三联单」将覆盖原单据'+(rec.type?'':'（注意：该单据的经费性质尚未标注，保存前需选择）'));
+}
+
+/* ================= 导入旧电子台账（Excel / CSV） ================= */
+let xlRecs=null,xlGroup=IMPORT_GROUP,xlType='';
+function normDateStr(s){
+  s=String(s||'').trim();if(!s)return'';
+  if(/^\d{5}$/.test(s)){const d=new Date(Date.UTC(1899,11,30)+(+s)*86400000);
+    return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0')}
+  const m=s.match(/(20\d{2})\s*[年\/\-\.]\s*(\d{1,2})\s*[月\/\-\.]\s*(\d{1,2})/);
+  if(m)return m[1]+'-'+String(+m[2]).padStart(2,'0')+'-'+String(+m[3]).padStart(2,'0');
+  return'';
+}
+function normTypeStr(s){s=String(s||'');if(s.includes('横向'))return'横向';if(s.includes('科研'))return'科研';if(s.includes('普通'))return'普通';return''}
+function renderXlPrev(){
+  const el=$('#xlPrev');
+  if(!xlRecs||!xlRecs.length){el.innerHTML='';return}
+  const eff=r=>r.type||xlType||'';
+  el.innerHTML=`
+    <div class="chips"><span class="chip c1">识别到 ${xlRecs.length} 张单据 · ${xlRecs.reduce((s,r)=>s+r.items.length,0)} 行明细</span></div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+      <div class="fld" style="max-width:240px"><span>经费性质（应用于本次导入中未标注的单据）</span>
+        <select id="xlType">
+          <option value="" ${!xlType?'selected':''}>留空（稍后在台账中编辑补充）</option>
+          <option ${xlType==='普通'?'selected':''}>普通</option>
+          <option ${xlType==='横向'?'selected':''}>横向</option>
+          <option ${xlType==='科研'?'selected':''}>科研</option>
+        </select></div>
+      <div class="fld" style="max-width:240px"><span>存入分组</span>
+        <select id="xlGroup">${allGroups().map(g=>`<option value="${esc(g)}" ${g===xlGroup?'selected':''}>${esc(g)}</option>`).join('')}</select></div>
+    </div>
+    <div class="table-scroll"><table class="tb"><thead><tr><th>日期</th><th>经费性质</th><th>经办人</th><th>项目数</th><th style="text-align:right">金额</th></tr></thead><tbody>${
+      xlRecs.map(r=>`<tr><td>${esc(r.date)}</td><td>${eff(r)?`<span class="badge b-${esc(eff(r))}">${esc(eff(r))}</span>`:'—'}</td><td>${esc(r.agent)||'—'}</td><td>${r.items.length}</td><td class="num">${money(r.total)}</td></tr>`).join('')
+    }</tbody></table></div>
+    <div class="actions"><button class="btn primary" id="xlSave">💾 全部存入台账</button><button class="btn" id="xlCancel">取消</button></div>`;
+  $('#xlType').onchange=e=>{xlType=e.target.value;renderXlPrev()};
+  $('#xlGroup').onchange=e=>{xlGroup=e.target.value};
+  $('#xlSave').onclick=()=>{
+    const now=Date.now();
+    const grp=(xlGroup&&allGroups().includes(xlGroup))?xlGroup:IMPORT_GROUP;
+    const recs=xlRecs.map((r,i)=>({id:uid(),date:r.date,type:r.type||xlType||'',agent:r.agent,
+      group:grp,items:r.items,total:r.total,createdAt:now+i,updatedAt:now+i,imported:true}));
+    records.push(...recs);persist();refreshData();
+    const noType=recs.filter(r=>!r.type).length;
+    xlRecs=null;renderXlPrev();
+    toast(`已存入 ${recs.length} 张单据（组：${grp}）✔`+(noType?`，其中 ${noType} 张经费性质留空，可稍后编辑补充`:''));
+    pushRecs(recs);
+  };
+  $('#xlCancel').onclick=()=>{xlRecs=null;renderXlPrev()};
 }
 
 /* ================= 台账 ================= */
@@ -673,8 +787,12 @@ function filtered(){
   return activeRecords().filter(r=>{
     if(filters.year&&(r.date||'').slice(0,4)!==filters.year)return false;
     if(filters.month&&+(r.date||'').slice(5,7)!==+filters.month)return false;
-    if(filters.type&&r.type!==filters.type)return false;
+    if(filters.type){
+      if(filters.type==='__none__'){if(r.type)return false}
+      else if(r.type!==filters.type)return false;
+    }
     if(filters.agent&&personOf(r)!==filters.agent)return false;
+    if(filters.group&&groupOf(r)!==filters.group)return false;
     return true;
   }).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||0)-(a.createdAt||0));
 }
@@ -684,28 +802,34 @@ function detailHTML(rec){
   }</tbody></table></div>`;
 }
 function renderLedger(){
-  const selY=$('#fYear'),selM=$('#fMonth'),selT=$('#fTypeF'),selA=$('#fTeacherF');
+  const selY=$('#fYear'),selM=$('#fMonth'),selT=$('#fTypeF'),selA=$('#fTeacherF'),selG=$('#fGroupF');
   selY.innerHTML=['',...yearsList()].map(y=>`<option value="${y}" ${y===filters.year?'selected':''}>${y||'全部年份'}</option>`).join('');
   selM.innerHTML=`<option value="">全年</option>`+Array.from({length:12},(_,i)=>`<option value="${i+1}" ${String(i+1)===filters.month?'selected':''}>${i+1} 月</option>`).join('');
   selA.innerHTML=`<option value="">全部经办人</option>`+agentList().map(a=>`<option ${a===filters.agent?'selected':''}>${esc(a)}</option>`).join('');
+  selG.innerHTML=`<option value="">全部分组</option>`+allGroups().map(g=>`<option value="${esc(g)}" ${g===filters.group?'selected':''}>${esc(g)}</option>`).join('');
   selT.value=filters.type;
+  const custom=allGroups().filter(g=>g!==DEFAULT_GROUP&&g!==IMPORT_GROUP);
+  $('#grpMgr').innerHTML=custom.length?custom.map(g=>`<option value="${esc(g)}">${esc(g)}</option>`).join(''):'<option value="">（暂无自建组）</option>';
 
   const list=filtered(),sum=r2(list.reduce((s,r)=>s+r.total,0));
-  const byType={};list.forEach(r=>{byType[r.type]=byType[r.type]||{n:0,s:0};byType[r.type].n++;byType[r.type].s=r2(byType[r.type].s+r.total)});
+  const byType={};let ntN=0,ntSum=0;
+  list.forEach(r=>{if(r.type){byType[r.type]=byType[r.type]||{n:0,s:0};byType[r.type].n++;byType[r.type].s=r2(byType[r.type].s+r.total)}else{ntN++;ntSum=r2(ntSum+r.total)}});
   $('#ledgerStats').innerHTML=
     `<span class="chip c3">共 ${list.length} 单 · ${money(sum)}</span>`+
-    ['普通','横向','科研'].map((t,i)=>`<span class="chip c${i}">${t} ${money((byType[t]||{}).s||0)} · ${(byType[t]||{}).n||0} 单</span>`).join('');
+    ['普通','横向','科研'].map((t,i)=>`<span class="chip c${i}">${t} ${money((byType[t]||{}).s||0)} · ${(byType[t]||{}).n||0} 单</span>`).join('')+
+    (ntN?`<span class="chip" style="background:#8A9182">未标注 ${money(ntSum)} · ${ntN} 单</span>`:'');
 
   $('#ledgerBody').innerHTML=list.length?list.map(r=>`
     <tr class="lrow" data-id="${r.id}">
       <td>${esc(r.date)}</td>
-      <td><span class="badge b-${esc(r.type)}">${esc(r.type)}</span></td>
+      <td>${r.type?`<span class="badge b-${esc(r.type)}">${esc(r.type)}</span>`:'<span class="badge b-未标注">未标注</span>'}</td>
       <td>${esc(personOf(r))||'—'}</td>
+      <td><select class="grp-sel" data-id="${r.id}" title="移动到其他组">${allGroups().map(g=>`<option value="${esc(g)}" ${g===groupOf(r)?'selected':''}>${esc(g)}</option>`).join('')}</select></td>
       <td>${r.items.length}</td><td class="num"><b>${money(r.total)}</b></td>
       <td style="white-space:nowrap"><button class="btn sm" data-act="print">打印</button><button class="btn sm" data-act="edit">编辑</button><button class="btn sm danger" data-act="del" title="移入回收站">删除</button></td>
     </tr>
-    <tr class="ldetail hidden"><td colspan="6">${detailHTML(r)}</td></tr>`).join('')
-  :`<tr><td colspan="6" class="empty">当前筛选条件下暂无单据</td></tr>`;
+    <tr class="ldetail hidden"><td colspan="7">${detailHTML(r)}</td></tr>`).join('')
+  :`<tr><td colspan="7" class="empty">当前筛选条件下暂无单据</td></tr>`;
 }
 
 /* ================= 回收站 ================= */
@@ -717,7 +841,7 @@ function renderRecycle(){
     <tr data-id="${r.id}">
       <td>${fmtDT(r.deletedAt)}</td>
       <td>${esc(r.date)}</td>
-      <td><span class="badge b-${esc(r.type)}">${esc(r.type)}</span></td>
+      <td>${r.type?`<span class="badge b-${esc(r.type)}">${esc(r.type)}</span>`:'—'}</td>
       <td>${esc(personOf(r))||'—'}</td>
       <td>${r.items.length}</td><td class="num"><b>${money(r.total)}</b></td>
       <td style="white-space:nowrap"><button class="btn sm" data-act="restore">恢复</button><button class="btn sm danger" data-act="purge">彻底删除</button></td>
@@ -730,13 +854,17 @@ function renderDash(){
   const selY=$('#dashYear');
   selY.innerHTML=yearsList().map(y=>`<option value="${y}" ${y===dash.year?'selected':''}>${y} 年</option>`).join('');
   $('#dashType').value=dash.type;
-  const list=activeRecords().filter(r=>(r.date||'').slice(0,4)===dash.year&&(!dash.type||r.type===dash.type));
+  let list=activeRecords().filter(r=>(r.date||'').slice(0,4)===dash.year);
+  if(dash.type)list=list.filter(r=>dash.type==='__none__'?!r.type:r.type===dash.type);
   const sum=r2(list.reduce((s,r)=>s+r.total,0));
   $('#dsCount').textContent=list.length;
   $('#dsSum').textContent=money(sum);
   $('#dsAvg').textContent=money(list.length?sum/list.length:0);
-  const byType={};list.forEach(r=>{byType[r.type]=r2((byType[r.type]||0)+r.total)});
-  $('#dsTypes').innerHTML=['普通','横向','科研'].map((t,i)=>`<span class="chip c${i}">${t}：${money(byType[t]||0)}</span>`).join('');
+  const byType={};let ntN=0,ntSum=0;
+  list.forEach(r=>{if(r.type){byType[r.type]=r2((byType[r.type]||0)+r.total)}else{ntN++;ntSum=r2(ntSum+r.total)}});
+  const chips=['普通','横向','科研'].map((t,i)=>`<span class="chip c${i}">${t}：${money(byType[t]||0)}</span>`);
+  if(ntN)chips.push(`<span class="chip" style="background:#8A9182">未标注：${money(ntSum)}</span>`);
+  $('#dsTypes').innerHTML=chips.join('');
   if(!window.Chart)return;
   Chart.defaults.color=CH_COLORS.tick;
   Chart.defaults.font.family='-apple-system,"PingFang SC","Microsoft YaHei",sans-serif';
@@ -745,7 +873,9 @@ function renderDash(){
   const mk=(id,cfg)=>{const c=$('#'+id);if(chartRefs[id])chartRefs[id].destroy();chartRefs[id]=new Chart(c.getContext('2d'),cfg)};
   mk('chMonth',{type:'bar',data:{labels:months.map(x=>x.m+'月'),datasets:[{data:months.map(x=>x.s),backgroundColor:CH_COLORS.green,borderRadius:5}]},
     options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,grid:{color:CH_COLORS.grid}},x:{grid:{display:false}}}}});
-  mk('chType',{type:'doughnut',data:{labels:['普通','横向','科研'],datasets:[{data:['普通','横向','科研'].map(t=>byType[t]||0),backgroundColor:[CH_COLORS.green,CH_COLORS.amber,CH_COLORS.teal],borderColor:'#FAFBF5',borderWidth:3}]},
+  const tLabels=['普通','横向','科研'].concat(ntN?['未标注']:[]);
+  mk('chType',{type:'doughnut',data:{labels:tLabels,datasets:[{data:tLabels.map(t=>t==='未标注'?ntSum:(byType[t]||0)),
+    backgroundColor:[CH_COLORS.green,CH_COLORS.amber,CH_COLORS.teal,CH_COLORS.gray],borderColor:'#FAFBF5',borderWidth:3}]},
     options:{plugins:{legend:{position:'bottom'}},cutout:'55%'}});
   const byA={};list.forEach(r=>{const a=personOf(r);if(a)byA[a]=r2((byA[a]||0)+r.total)});
   const top=Object.entries(byA).sort((a,b)=>b[1]-a[1]).slice(0,8);
@@ -771,25 +901,25 @@ function exportLedgerExcel(list,fname){
   const th={style:'thin',color:{rgb:'B7C2A8'}};
   const bd={top:th,bottom:th,left:th,right:th};
   const wb=XLSX.utils.book_new();
-  const aoa=[['日期','经费性质','经办人','名称','型号规格','数量','单位','单价','总价','单据合计']];
-  list.forEach(r=>r.items.forEach(it=>aoa.push([r.date,r.type,personOf(r),it.name,it.spec,it.qty,it.unit,it.price,it.total,r.total])));
+  const aoa=[['日期','经费性质','经办人','分组','名称','型号规格','数量','单位','单价','总价','单据合计']];
+  list.forEach(r=>r.items.forEach(it=>aoa.push([r.date,r.type,personOf(r),groupOf(r),it.name,it.spec,it.qty,it.unit,it.price,it.total,r.total])));
   const ws=XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols']=[{wch:11},{wch:8},{wch:10},{wch:18},{wch:16},{wch:7},{wch:6},{wch:9},{wch:10},{wch:11}];
+  ws['!cols']=[{wch:11},{wch:8},{wch:10},{wch:10},{wch:18},{wch:16},{wch:7},{wch:6},{wch:9},{wch:10},{wch:11}];
   const hStyle={font:{name:'等线',sz:11,bold:true},fill:{patternType:'solid',fgColor:{rgb:'E3EBDB'}},border:bd,alignment:{horizontal:'center',vertical:'center'}};
-  for(let C=0;C<=9;C++){const a=XLSX.utils.encode_cell({r:0,c:C});if(ws[a])ws[a].s=hStyle}
+  for(let C=0;C<=10;C++){const a=XLSX.utils.encode_cell({r:0,c:C});if(ws[a])ws[a].s=hStyle}
   const dStyle={font:{name:'等线',sz:10},border:bd};
   const rng=ws['!ref']&&XLSX.utils.decode_range(ws['!ref']);
-  if(rng)for(let R=1;R<=rng.e.r;R++)for(let C=0;C<=9;C++){
+  if(rng)for(let R=1;R<=rng.e.r;R++)for(let C=0;C<=10;C++){
     const a=XLSX.utils.encode_cell({r:R,c:C});
     if(ws[a])ws[a].s=dStyle;else ws[a]={t:'s',v:'',s:dStyle};
   }
   XLSX.utils.book_append_sheet(wb,ws,'台账明细');
   const byType={},byMonth={};
   list.forEach(r=>{
-    byType[r.type]=byType[r.type]||{n:0,s:0};byType[r.type].n++;byType[r.type].s=r2(byType[r.type].s+r.total);
+    byType[r.type||'未标注']=byType[r.type||'未标注']||{n:0,s:0};byType[r.type||'未标注'].n++;byType[r.type||'未标注'].s=r2(byType[r.type||'未标注'].s+r.total);
     const mk=(r.date||'').slice(0,7);byMonth[mk]=byMonth[mk]||{n:0,s:0};byMonth[mk].n++;byMonth[mk].s=r2(byMonth[mk].s+r.total);
   });
-  const ws2=XLSX.utils.aoa_to_sheet([['经费性质','单据数','合计金额'],...['普通','横向','科研'].map(t=>[t,(byType[t]||{}).n||0,(byType[t]||{}).s||0]),['合计',list.length,0]]);
+  const ws2=XLSX.utils.aoa_to_sheet([['经费性质','单据数','合计金额'],...['普通','横向','科研','未标注'].map(t=>[t,(byType[t]||{}).n||0,(byType[t]||{}).s||0]),['合计',list.length,0]]);
   ws2['!cols']=[{wch:10},{wch:10},{wch:12}];XLSX.utils.book_append_sheet(wb,ws2,'按经费性质');
   const ws3=XLSX.utils.aoa_to_sheet([['月份','单据数','合计金额'],...Object.keys(byMonth).sort().map(k=>[k,byMonth[k].n,byMonth[k].s])]);
   ws3['!cols']=[{wch:10},{wch:10},{wch:12}];XLSX.utils.book_append_sheet(wb,ws3,'按月度');
@@ -905,7 +1035,7 @@ function downloadTemplate(){
     .then(ok=>toast(ok?'模板已保存：带边框/公式/页边距，A4 纵向 100% 直接打印':'已取消'));
 }
 
-/* ================= Supabase 云同步（v1.8.1：增量上传 + 双向对齐） ================= */
+/* ================= Supabase 云同步（增量上传 + 双向对齐 + 分组同步） ================= */
 const sbCfg=()=>({url:(settings.sbUrl||'').replace(/\/+$/,''),key:settings.sbKey||'',table:settings.sbTable||'records'});
 function setSbStatus(msg,cls){const el=$('#sbStatus');el.textContent=msg;el.className=cls||''}
 function sbHeaders(){const{key}=sbCfg();return{apikey:key,Authorization:'Bearer '+key,'Content-Type':'application/json',Accept:'application/json'}}
@@ -916,7 +1046,6 @@ async function sbTest(){
     setSbStatus(r.ok?'✔ 连接成功':'✘ '+r.status+' '+(await r.text()).slice(0,140),r.ok?'ok':'err');
   }catch(e){setSbStatus('✘ '+e.message,'err')}
 }
-/* 静默批量上传（同步时自动修复用，不提示、失败下次再试） */
 async function sbUpsert(list){
   const c=sbCfg();if(!c.url||!c.key||!list||!list.length)return false;
   try{
@@ -926,20 +1055,18 @@ async function sbUpsert(list){
     return r.ok;
   }catch(e){return false}
 }
-/* 上传：targets='all' 全部（手动按钮）；数组=只传指定单据（本端刚改动的，增量） */
 async function sbPush(silent,targets){
   const c=sbCfg();if(!c.url||!c.key){if(!silent)setSbStatus('未配置云端','err');return}
-  const list=targets==='all'?records:(Array.isArray(targets)?targets.filter(Boolean):[]);
+  const list=targets==='all'?[...records,groupsEntity()]:(Array.isArray(targets)?targets.filter(Boolean):[]);
   if(!list.length){if(!silent)setSbStatus('没有需要上传的内容','ok');return}
   try{
     const body=list.map(r=>({id:r.id,payload:r,updated_at:new Date(r.updatedAt||Date.now()).toISOString()}));
     const r=await fetch(`${c.url}/rest/v1/${c.table}?on_conflict=id`,
       {method:'POST',headers:{...sbHeaders(),Prefer:'resolution=merge-duplicates'},body:JSON.stringify(body)});
     if(!r.ok)throw new Error(r.status+' '+(await r.text()).slice(0,140));
-    if(!silent)setSbStatus('✔ 已上传 '+body.length+' 条 · '+new Date().toLocaleTimeString(),'ok');
+    if(!silent)setSbStatus('✔ 已上传 '+(targets==='all'?records.length:list.length)+' 条 · '+new Date().toLocaleTimeString(),'ok');
   }catch(e){setSbStatus('✘ 上传失败：'+e.message,'err');if(!silent)toast('云端上传失败','err')}
 }
-/* 双向同步：云端较新 → 合并入本地；本地较新（含离线新建 / 上传失败 / 曾被覆盖）→ 回传云端修复 */
 async function sbPull(silent){
   const c=sbCfg();if(!c.url||!c.key){if(!silent)setSbStatus('未配置云端','err');return}
   if(!silent)setSbStatus('同步中…');
@@ -948,9 +1075,14 @@ async function sbPull(silent){
     if(!r.ok)throw new Error(r.status+' '+(await r.text()).slice(0,140));
     const rows=await r.json();
     const cloud=new Map();rows.forEach(row=>{const rec=row.payload;if(rec&&rec.id)cloud.set(rec.id,rec)});
+    const cm=cloud.get('__groups__');
+    if(cm&&cm.__meta==='groups'&&(cm.updatedAt||0)>(groupsUpdatedAt||0)){
+      groups=normalizeGroups(cm.groups);groupsUpdatedAt=cm.updatedAt;persistGroups(false);
+    }
     const byId=new Map(records.map(x=>[x.id,x]));
     let added=0,merged=0,dels=0;
     cloud.forEach(rec=>{
+      if(rec.__meta)return;
       const loc=byId.get(rec.id);
       if(!loc){
         if(!rec.purgedAt){records.push(rec);byId.set(rec.id,rec);added++}
@@ -960,16 +1092,15 @@ async function sbPull(silent){
         if(wasActive&&(loc.deletedAt||loc.purgedAt))dels++;
         merged++;
       }
-      /* 云端不比本地新：若本地更新，下方 toHeal 会自动回传修复 */
     });
     if(added||merged){
       persist();refreshData();
       const busy=!!(editingId||(draft&&(draft.type||(draft.agent||'').trim()||draft.items.some(it=>(it.name||'').trim()))));
       if(!busy){renderForm();renderPreview()}
     }
-    /* 回传修复：云端没有的（离线新建等）或本地版本更新的（删除/修改未送达） */
     const toHeal=records.filter(loc=>{const cl=cloud.get(loc.id);return !cl||((loc.updatedAt||0)>(cl.updatedAt||0))});
-    if(toHeal.length)await sbUpsert(toHeal);
+    const healMeta=(!cm||((groupsUpdatedAt||0)>(cm.updatedAt||0)))?[groupsEntity()]:[];
+    if(toHeal.length||healMeta.length)await sbUpsert([...toHeal,...healMeta]);
     const parts=[];
     if(added)parts.push(`新增 ${added}`);
     if(merged)parts.push(`更新 ${merged}`);
@@ -980,7 +1111,6 @@ async function sbPull(silent){
     if(!silent)setSbStatus('✘ 同步失败：'+e.message,'err');
   }
 }
-/* 后台自动同步（带 15 秒节流）：打开页面 / 切回页面 / 切换到台账等页面时触发 */
 let lastPull=0,pullingNow=false;
 function autoSync(force){
   const c=sbCfg();
@@ -993,7 +1123,7 @@ document.addEventListener('visibilitychange',()=>{if(document.visibilityState===
 
 /* ================= 备份 / 恢复 ================= */
 async function backupJSON(){
-  const data={app:'tkc',version:APP_VERSION,records,settings,exportedAt:new Date().toISOString()};
+  const data={app:'tkc',version:APP_VERSION,records,groups,settings,exportedAt:new Date().toISOString()};
   const ok=await saveFile(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),
     `特种耗材出入库备份-${todayISO().replace(/-/g,'')}.json`,'application/json','.json');
   toast(ok?'备份已保存 ✔':'已取消');
@@ -1013,7 +1143,6 @@ function switchPage(p){
   if(p==='recycle')renderRecycle();
   if(p==='dash')renderDash();
   if(p==='entry')requestAnimationFrame(()=>requestAnimationFrame(fitPreview));
-  /* v1.8.1：切换到数据页面时自动与云端对齐 */
   if(p==='ledger'||p==='recycle'||p==='dash')autoSync();
 }
 function applyPrintLayout(){
@@ -1048,6 +1177,7 @@ function bind(){
   $('#fDate').onchange=e=>{draft.date=e.target.value;printRec=null;markDirty();renderPreviewSoon()};
   $('#fType').onchange=e=>{draft.type=e.target.value;printRec=null;markDirty()};
   $('#fAgent').oninput=e=>{draft.agent=e.target.value;printRec=null;markDirty()};
+  $('#fGroup').onchange=e=>{draft.group=e.target.value;markDirty()};
   $('#btnSave').onclick=onSave;
   $('#btnReset').onclick=()=>{if(confirm('清空当前填写内容？')){editingId=null;printRec=null;draft=newDraft();renderForm();renderPreview();setSaveStatus(null)}};
   $('#btnCancelEdit').onclick=()=>{editingId=null;printRec=null;draft=newDraft();renderForm();renderPreview();setSaveStatus(null);toast('已退出编辑')};
@@ -1056,7 +1186,51 @@ function bind(){
   $('#fMonth').onchange=e=>{filters.month=e.target.value;renderLedger()};
   $('#fTypeF').onchange=e=>{filters.type=e.target.value;renderLedger()};
   $('#fTeacherF').onchange=e=>{filters.agent=e.target.value;renderLedger()};
-  $('#btnLedgerReset').onclick=()=>{Object.assign(filters,{year:'',month:'',type:'',agent:''});renderLedger()};
+  $('#fGroupF').onchange=e=>{filters.group=e.target.value;renderLedger()};
+  $('#btnLedgerReset').onclick=()=>{Object.assign(filters,{year:'',month:'',type:'',agent:'',group:''});renderLedger()};
+  /* 分组管理 */
+  $('#btnGrpNew').onclick=()=>{
+    const name=prompt('新组名称（用于区分存档 / 网页录入等）：');
+    if(name===null)return;
+    const n=name.trim();
+    if(!n)return;
+    if(n===DEFAULT_GROUP||n===IMPORT_GROUP){toast('内置组名称不可重复创建','err');return}
+    if(allGroups().includes(n)){toast('该组已存在','err');return}
+    groups.push({name:n});persistGroups(true);pushMeta();
+    filters.group=n;refreshData();
+    toast('已新建组：'+n);
+  };
+  $('#btnGrpRename').onclick=()=>{
+    const old=$('#grpMgr').value;
+    if(!old){toast('请先在左侧下拉选择要改名的自建组','err');return}
+    const nn=prompt(`将组「${old}」改名为：`,'');
+    if(nn===null)return;
+    const n=nn.trim();
+    if(!n||n===old)return;
+    if(n===DEFAULT_GROUP||n===IMPORT_GROUP){toast('不能改为内置组名称','err');return}
+    if(allGroups().includes(n)){toast('该名称已存在','err');return}
+    groups=groups.map(g=>g.name===old?{name:n}:g);
+    const affected=records.filter(r=>groupOf(r)===old);
+    affected.forEach(r=>{r.group=n;r.updatedAt=Date.now()});
+    persistGroups(true);persist();
+    if(affected.length)pushRecs(affected);pushMeta();
+    if(filters.group===old)filters.group=n;
+    refreshData();
+    toast(`已改名：${old} → ${n}（${affected.length} 单）`);
+  };
+  $('#btnGrpDel').onclick=()=>{
+    const name=$('#grpMgr').value;
+    if(!name){toast('请先在左侧下拉选择要删除的自建组','err');return}
+    const affected=records.filter(r=>groupOf(r)===name);
+    if(!confirm(`确定删除组「${name}」？组内 ${affected.length} 个单据将移入「${DEFAULT_GROUP}」（单据本身不会被删除）。`))return;
+    groups=groups.filter(g=>g.name!==name);
+    affected.forEach(r=>{r.group=DEFAULT_GROUP;r.updatedAt=Date.now()});
+    persistGroups(true);persist();
+    if(affected.length)pushRecs(affected);pushMeta();
+    if(filters.group===name)filters.group='';
+    refreshData();
+    toast(`已删除组「${name}」，${affected.length} 单移入「${DEFAULT_GROUP}」`);
+  };
   $('#btnExportLedger').onclick=()=>{const l=filtered();if(!l.length){toast('当前筛选无数据','err');return}
     exportLedgerExcel(l,`特种耗材台账-${filters.year||'全部'}${filters.month?filters.month+'月':''}.xlsx`)};
   $('#btnExportAll').onclick=()=>{const l=activeRecords();if(!l.length){toast('暂无数据','err');return}
@@ -1075,7 +1249,13 @@ function bind(){
       else if(act==='del'&&confirm('确定删除该单据？将移入回收站（同步到所有设备），可随时恢复或彻底删除。'))recycleRecord(rec);
       return;
     }
+    if(e.target.closest('select,input'))return;
     if(tr){const det=tr.nextElementSibling;det&&det.classList.toggle('hidden')}
+  });
+  $('#ledgerBody').addEventListener('change',e=>{
+    const sel=e.target.closest('select.grp-sel');if(!sel)return;
+    const tr=sel.closest('tr');const rec=records.find(r=>r.id===tr.dataset.id);
+    if(rec)moveRecordToGroup(rec,sel.value);
   });
   /* 回收站 */
   $('#recycleBody').addEventListener('click',e=>{
@@ -1091,6 +1271,67 @@ function bind(){
     list.forEach(r=>{r.purgedAt=Date.now();r.updatedAt=Date.now()});
     persist();refreshData();toast('回收站已清空');pushRecs(list);
   };
+  /* 导入页：Excel / CSV */
+  $('#xlFile').addEventListener('change',async e=>{
+    const f=e.target.files[0];e.target.value='';
+    if(!f)return;
+    if(!window.XLSX){toast('Excel 组件未加载（需联网）','err');return}
+    try{
+      const buf=await f.arrayBuffer();
+      const wb=XLSX.read(buf,{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:''});
+      if(!rows||!rows.length)throw new Error('文件为空');
+      /* 表头识别：经费性质为可选列，没有也能正常导入 */
+      let map=null,hi=-1;
+      for(let i=0;i<Math.min(rows.length,8);i++){
+        const r=(rows[i]||[]).map(c=>String(c).trim());
+        const idx={};
+        r.forEach((c,ci)=>{
+          if(/日期/.test(c))idx.date=ci;
+          else if(/性质/.test(c))idx.type=ci;
+          else if(/经办/.test(c))idx.agent=ci;
+          else if(/名\s*称/.test(c))idx.name=ci;
+          else if(/型号|规格/.test(c))idx.spec=ci;
+          else if(/数量/.test(c))idx.qty=ci;
+          else if(/单位/.test(c))idx.unit=ci;
+          else if(/单价/.test(c))idx.price=ci;
+          else if(/总\s*价/.test(c))idx.total=ci;
+        });
+        if(idx.total==null)r.forEach((c,ci)=>{if(/金额|合计/.test(String(c)))idx.total=ci});
+        if(idx.name!=null&&(idx.qty!=null||idx.price!=null)){map=idx;hi=i;break}
+      }
+      let start;
+      if(map){start=hi+1}
+      else{map={date:0,name:1,spec:2,qty:3,unit:4,price:5,total:6};start=0;
+        toast('未找到表头，按「日期/名称/型号规格/数量/单位/单价/总价」列顺序解析')}
+      /* 按「日期 + 经办人」合并为单据（性质列为空时即日期+经办人） */
+      const gm=new Map();
+      for(let i=start;i<rows.length;i++){
+        const r=rows[i]||[];
+        const cell=k=>map[k]!=null?String(r[map[k]]??'').trim():'';
+        const name=cell('name');
+        if(!name||name==='名称')continue;
+        const date=normDateStr(cell('date'));
+        const type=normTypeStr(cell('type'));   /* 无该列 → 空，由导入时统一指定 */
+        const agent=cell('agent');
+        const key=date+'|'+type+'|'+agent;
+        if(!gm.has(key))gm.set(key,{date,type,agent,items:[]});
+        const q=num(cell('qty')),p=num(cell('price')),t=num(cell('total'));
+        let Q=q,P=p,T=t;
+        if(Q!=null&&P!=null)T=r2(Q*P);
+        else if(Q!=null&&T!=null&&Q)P=r2(T/Q);
+        else if(P!=null&&T!=null&&P)Q=r2(T/P);
+        if(Q==null||P==null||T==null)continue;
+        gm.get(key).items.push({name,spec:cell('spec'),qty:Q,unit:cell('unit')||'件',price:P,total:T});
+      }
+      const recs=[...gm.values()].filter(g=>g.items.length)
+        .map(g=>({date:g.date||todayISO(),type:g.type,agent:g.agent,items:g.items,
+          total:r2(g.items.reduce((s,x)=>s+x.total,0))}));
+      if(!recs.length)throw new Error('没有解析到有效数据行');
+      xlRecs=recs;xlGroup=IMPORT_GROUP;xlType='';renderXlPrev();
+    }catch(err){toast('导入失败：'+(err.message||err),'err')}
+  });
   /* 设置 */
   $('#setDept').oninput=e=>{settings.dept=e.target.value;persist();renderPreview()};
   $('#setLayout').onchange=e=>{settings.layout=e.target.value;persist();applyPrintLayout();renderPreview();toast('已切换版式：'+(settings.layout==='portrait'?'竖版三联·横向裁剪':'横版三联并排'))};
@@ -1110,9 +1351,13 @@ function bind(){
       const data=JSON.parse(rd.result);
       if(!Array.isArray(data.records))throw new Error('文件格式不正确');
       const byId=new Map(records.map(r=>[r.id,r]));let added=0,merged=0;
-      data.records.forEach(rec=>{if(!rec||!rec.id)return;const loc=byId.get(rec.id);
+      data.records.forEach(rec=>{if(!rec||!rec.id||rec.__meta)return;const loc=byId.get(rec.id);
         if(!loc){records.push(rec);byId.set(rec.id,rec);added++}
         else if((rec.updatedAt||0)>(loc.updatedAt||0)){Object.assign(loc,rec);merged++}});
+      if(Array.isArray(data.groups)){
+        groups=normalizeGroups(data.groups.map(g=>g&&g.name).filter(Boolean));
+        persistGroups(false);
+      }
       if(data.settings)settings=Object.assign(settings,data.settings);
       persist();applySettingsUI();applyPrintLayout();refreshData();renderForm();renderPreview();
       toast(`恢复完成：新增 ${added}，更新 ${merged} ✔`);
@@ -1129,12 +1374,12 @@ function bind(){
 /* ================= 启动 ================= */
 (function init(){
   draft=newDraft();
-  $('#verTop').textContent=APP_VERSION+' · 三联单 · 台账 · 回收站 · 仪表盘';
+  $('#verTop').textContent=APP_VERSION+' · 三联单 · 导入 · 台账 · 仪表盘';
   $('#verSet').textContent='当前版本：'+APP_VERSION;
   console.log('%c特种耗材出入库系统 '+APP_VERSION,'color:#5C8A64;font-weight:bold');
   bind();applyPrintLayout();applySettingsUI();
   renderForm();renderPreview();refreshData();
-  setTimeout(()=>autoSync(true),1000);   /* 打开页面约 1 秒后自动双向同步 */
+  setTimeout(()=>autoSync(true),1000);
 })();
 </script>
 </body>
