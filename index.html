@@ -283,7 +283,7 @@ pre.sql{background:#3B4437;color:#DCE5D3;border-radius:9px;padding:10px;font-siz
       <button class="btn sm danger hidden" id="btnEmptyRecycle">🗑 清空回收站（彻底删除）</button>
     </h3>
     <div class="pv-hint" style="margin:0 0 8px">台账中「删除」的单据会移入这里并<b>同步到所有设备</b>；可随时「恢复」回台账，或「彻底删除」。
-      彻底删除同样会双端同步（另一端刷新页面后该单据从其回收站消失），且<b>不可恢复</b>。</div>
+      每次进入本页会自动与云端对齐；若另一端刚做了操作，稍等片刻或切出再切回本页即可看到。</div>
     <div class="table-scroll">
       <table class="tb">
         <thead><tr><th>删除时间</th><th>单据日期</th><th>经费性质</th><th>经办人</th><th>项目数</th><th style="text-align:right">金额</th><th>操作</th></tr></thead>
@@ -346,18 +346,17 @@ pre.sql{background:#3B4437;color:#DCE5D3;border-radius:9px;padding:10px;font-siz
       <div class="fld" style="margin-bottom:8px"><span>anon key</span><input id="setSbKey" placeholder="eyJhbGciOi..."></div>
       <div class="fld" style="margin-bottom:8px"><span>表名</span><input id="setSbTable" placeholder="records"></div>
       <label style="display:flex;gap:6px;align-items:center;font-size:13px;margin-bottom:6px">
-        <input type="checkbox" id="setAuto" style="width:auto"> 保存单据后自动上传云端
-      </label>
-      <label style="display:flex;gap:6px;align-items:center;font-size:13px;margin-bottom:6px">
-        <input type="checkbox" id="setAutoPull" style="width:auto"> 打开页面时自动从云端拉取（推荐）
+        <input type="checkbox" id="setAutoPull" style="width:auto"> 自动同步（打开 / 切回页面 / 切换页面时，推荐）
       </label>
       <div class="row-btns">
         <button class="btn sm" id="btnSbTest">测试连接</button>
-        <button class="btn sm" id="btnSbPush">⬆ 上传到云端</button>
-        <button class="btn sm" id="btnSbPull">⬇ 从云端拉取</button>
+        <button class="btn sm" id="btnSbPush">⬆ 上传到云端（全部）</button>
+        <button class="btn sm" id="btnSbPull">⬇ 立即同步</button>
       </div>
       <div id="sbStatus"></div>
-      <div class="pv-hint">同步机制：保存自动上传 ✔；<b>删除 / 恢复 / 彻底删除均实时同步</b> ✔；打开或刷新页面约 1 秒后自动拉取最新（可在上方关闭）。正在填写的表单不会被同步打断；同一张单以最后修改时间为准。</div>
+      <div class="pv-hint">同步机制（配置好后全自动）：<b>保存 / 删除 / 恢复 / 彻底删除</b>时只把改动的单据即时上传（增量，不会用旧数据覆盖云端）；
+        <b>打开页面、从后台切回（手机解锁 / 电脑切回标签页）、切换到台账 / 回收站 / 仪表盘</b>时自动与云端双向对齐，两端差异会被自动修复。
+        正在填写的表单不会被同步打断；同一张单以最后修改时间为准。</div>
       <div class="pv-hint">在 Supabase SQL Editor 中执行：</div>
       <pre class="sql">create table if not exists records (
   id text primary key,
@@ -380,7 +379,7 @@ create policy "all" on records for all using (true) with check (true);</pre>
 <script>
 'use strict';
 /* ================= 版本 ================= */
-const APP_VERSION='v1.8.0';
+const APP_VERSION='v1.8.1';
 
 /* ================= 工具 ================= */
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
@@ -428,7 +427,7 @@ function debounce(fn,ms){let h;return(...a)=>{clearTimeout(h);h=setTimeout(()=>f
 const LS_REC='tkc_records_v1',LS_SET='tkc_settings_v1';
 function load(k,d){try{const v=JSON.parse(localStorage.getItem(k));return v??d}catch(e){return d}}
 let records=load(LS_REC,[]);
-let settings=Object.assign({dept:'特种设备学院',layout:'portrait',sbUrl:'',sbKey:'',sbTable:'records',autoSync:false,autoPull:true},load(LS_SET,{}));
+let settings=Object.assign({dept:'特种设备学院',layout:'portrait',sbUrl:'',sbKey:'',sbTable:'records',autoPull:true},load(LS_SET,{}));
 const filters={year:String(new Date().getFullYear()),month:'',type:'',agent:''};
 const dash={year:String(new Date().getFullYear()),type:''};
 let draft=null,editingId=null;const chartRefs={};
@@ -436,13 +435,14 @@ let printRec=null;
 function persist(){localStorage.setItem(LS_REC,JSON.stringify(records));localStorage.setItem(LS_SET,JSON.stringify(settings))}
 
 /* ===== 记录状态（v1.8.0 回收站机制）=====
-   deletedAt 有值 = 在回收站；purgedAt 有值 = 已彻底删除（墓碑，仅用于同步，不再显示） */
+   deletedAt 有值 = 在回收站；purgedAt 有值 = 已彻底删除（墓碑，仅用于同步，不再显示）
+   v1.8.1：上传只推"本端刚改动"的单据（增量），杜绝旧数据覆盖云端 */
 const activeRecords=()=>records.filter(r=>!r.deletedAt&&!r.purgedAt);
 const recycleBinRecords=()=>records.filter(r=>r.deletedAt&&!r.purgedAt).sort((a,b)=>(b.deletedAt||0)-(a.deletedAt||0));
-function pushIfCloud(){const c=sbCfg();if(c.url&&c.key)sbPush(true)}
-function recycleRecord(rec){rec.deletedAt=Date.now();rec.updatedAt=Date.now();persist();refreshData();toast('已移入回收站，可随时恢复');pushIfCloud()}
-function restoreRecord(rec){delete rec.deletedAt;rec.updatedAt=Date.now();persist();refreshData();toast('已恢复到台账');pushIfCloud()}
-function purgeRecord(rec){rec.purgedAt=Date.now();rec.updatedAt=Date.now();persist();refreshData();toast('已彻底删除');pushIfCloud()}
+function pushRecs(recs){const c=sbCfg();if(c.url&&c.key&&recs&&recs.length)sbPush(true,recs)}
+function recycleRecord(rec){rec.deletedAt=Date.now();rec.updatedAt=Date.now();persist();refreshData();toast('已移入回收站，可随时恢复');pushRecs([rec])}
+function restoreRecord(rec){rec.deletedAt=null;rec.updatedAt=Date.now();persist();refreshData();toast('已恢复到台账');pushRecs([rec])}
+function purgeRecord(rec){rec.purgedAt=Date.now();rec.updatedAt=Date.now();persist();refreshData();toast('已彻底删除');pushRecs([rec])}
 
 /* ===== 内嵌保存状态 ===== */
 function setSaveStatus(type,msg){
@@ -656,7 +656,7 @@ function onSave(){
   const pvCard=$('#pvSlips').closest('.card');
   pvCard.classList.remove('flash');void pvCard.offsetWidth;pvCard.classList.add('flash');
 
-  if(settings.autoSync)sbPush(true);
+  pushRecs([rec]);   /* v1.8.1：只推送刚保存的这一张（配置了云端即自动） */
 }
 function startEdit(rec){
   editingId=rec.id;printRec=null;
@@ -905,7 +905,7 @@ function downloadTemplate(){
     .then(ok=>toast(ok?'模板已保存：带边框/公式/页边距，A4 纵向 100% 直接打印':'已取消'));
 }
 
-/* ================= Supabase 云同步 ================= */
+/* ================= Supabase 云同步（v1.8.1：增量上传 + 双向对齐） ================= */
 const sbCfg=()=>({url:(settings.sbUrl||'').replace(/\/+$/,''),key:settings.sbKey||'',table:settings.sbTable||'records'});
 function setSbStatus(msg,cls){const el=$('#sbStatus');el.textContent=msg;el.className=cls||''}
 function sbHeaders(){const{key}=sbCfg();return{apikey:key,Authorization:'Bearer '+key,'Content-Type':'application/json',Accept:'application/json'}}
@@ -916,54 +916,80 @@ async function sbTest(){
     setSbStatus(r.ok?'✔ 连接成功':'✘ '+r.status+' '+(await r.text()).slice(0,140),r.ok?'ok':'err');
   }catch(e){setSbStatus('✘ '+e.message,'err')}
 }
-async function sbPush(silent){
-  const c=sbCfg();if(!c.url||!c.key){if(!silent)setSbStatus('未配置云端','err');return}
+/* 静默批量上传（同步时自动修复用，不提示、失败下次再试） */
+async function sbUpsert(list){
+  const c=sbCfg();if(!c.url||!c.key||!list||!list.length)return false;
   try{
-    const body=records.map(r=>({id:r.id,payload:r,updated_at:new Date(r.updatedAt||Date.now()).toISOString()}));
+    const body=list.map(r=>({id:r.id,payload:r,updated_at:new Date(r.updatedAt||Date.now()).toISOString()}));
+    const r=await fetch(`${c.url}/rest/v1/${c.table}?on_conflict=id`,
+      {method:'POST',headers:{...sbHeaders(),Prefer:'resolution=merge-duplicates'},body:JSON.stringify(body)});
+    return r.ok;
+  }catch(e){return false}
+}
+/* 上传：targets='all' 全部（手动按钮）；数组=只传指定单据（本端刚改动的，增量） */
+async function sbPush(silent,targets){
+  const c=sbCfg();if(!c.url||!c.key){if(!silent)setSbStatus('未配置云端','err');return}
+  const list=targets==='all'?records:(Array.isArray(targets)?targets.filter(Boolean):[]);
+  if(!list.length){if(!silent)setSbStatus('没有需要上传的内容','ok');return}
+  try{
+    const body=list.map(r=>({id:r.id,payload:r,updated_at:new Date(r.updatedAt||Date.now()).toISOString()}));
     const r=await fetch(`${c.url}/rest/v1/${c.table}?on_conflict=id`,
       {method:'POST',headers:{...sbHeaders(),Prefer:'resolution=merge-duplicates'},body:JSON.stringify(body)});
     if(!r.ok)throw new Error(r.status+' '+(await r.text()).slice(0,140));
-    setSbStatus('✔ 已上传 '+body.length+' 条 · '+new Date().toLocaleTimeString(),'ok');
+    if(!silent)setSbStatus('✔ 已上传 '+body.length+' 条 · '+new Date().toLocaleTimeString(),'ok');
   }catch(e){setSbStatus('✘ 上传失败：'+e.message,'err');if(!silent)toast('云端上传失败','err')}
 }
-/* v1.8.0：拉取合并支持删除同步——deletedAt/purgedAt 随 payload 同步，云端较新即覆盖本地状态 */
+/* 双向同步：云端较新 → 合并入本地；本地较新（含离线新建 / 上传失败 / 曾被覆盖）→ 回传云端修复 */
 async function sbPull(silent){
   const c=sbCfg();if(!c.url||!c.key){if(!silent)setSbStatus('未配置云端','err');return}
-  if(!silent)setSbStatus('拉取中…');
+  if(!silent)setSbStatus('同步中…');
   try{
     const r=await fetch(`${c.url}/rest/v1/${c.table}?select=id,payload,updated_at`,{headers:sbHeaders()});
     if(!r.ok)throw new Error(r.status+' '+(await r.text()).slice(0,140));
-    const rows=await r.json();const byId=new Map(records.map(x=>[x.id,x]));let added=0,merged=0,dels=0;
-    rows.forEach(row=>{
-      const rec=row.payload;if(!rec||!rec.id)return;
+    const rows=await r.json();
+    const cloud=new Map();rows.forEach(row=>{const rec=row.payload;if(rec&&rec.id)cloud.set(rec.id,rec)});
+    const byId=new Map(records.map(x=>[x.id,x]));
+    let added=0,merged=0,dels=0;
+    cloud.forEach(rec=>{
       const loc=byId.get(rec.id);
       if(!loc){
-        if(!rec.purgedAt){records.push(rec);byId.set(rec.id,rec);added++}   /* 墓碑：本地从未有过的已删单据，无需存 */
+        if(!rec.purgedAt){records.push(rec);byId.set(rec.id,rec);added++}
       }else if((rec.updatedAt||0)>(loc.updatedAt||0)){
         const wasActive=!loc.deletedAt&&!loc.purgedAt;
         Object.assign(loc,rec);
         if(wasActive&&(loc.deletedAt||loc.purgedAt))dels++;
-        merged++
+        merged++;
       }
+      /* 云端不比本地新：若本地更新，下方 toHeal 会自动回传修复 */
     });
     if(added||merged){
       persist();refreshData();
       const busy=!!(editingId||(draft&&(draft.type||(draft.agent||'').trim()||draft.items.some(it=>(it.name||'').trim()))));
       if(!busy){renderForm();renderPreview()}
     }
+    /* 回传修复：云端没有的（离线新建等）或本地版本更新的（删除/修改未送达） */
+    const toHeal=records.filter(loc=>{const cl=cloud.get(loc.id);return !cl||((loc.updatedAt||0)>(cl.updatedAt||0))});
+    if(toHeal.length)await sbUpsert(toHeal);
     const parts=[];
     if(added)parts.push(`新增 ${added}`);
     if(merged)parts.push(`更新 ${merged}`);
     if(dels)parts.push(`删除 ${dels}`);
-    if(silent){
-      if(parts.length)toast('已自动同步：'+parts.join('，'));
-    }else{
-      setSbStatus('✔ 拉取完成：'+(parts.length?parts.join('，'):'无变化'),'ok');
-    }
+    if(silent){if(parts.length)toast('已自动同步：'+parts.join('，'))}
+    else setSbStatus('✔ 同步完成：'+(parts.length?parts.join('，'):'无变化')+(toHeal.length?`（自动回传 ${toHeal.length} 条）`:''),'ok');
   }catch(e){
-    if(!silent)setSbStatus('✘ 拉取失败：'+e.message,'err');
+    if(!silent)setSbStatus('✘ 同步失败：'+e.message,'err');
   }
 }
+/* 后台自动同步（带 15 秒节流）：打开页面 / 切回页面 / 切换到台账等页面时触发 */
+let lastPull=0,pullingNow=false;
+function autoSync(force){
+  const c=sbCfg();
+  if(!settings.autoPull||!c.url||!c.key||pullingNow)return;
+  if(!force&&Date.now()-lastPull<15000)return;
+  pullingNow=true;lastPull=Date.now();
+  Promise.resolve(sbPull(true)).finally(()=>{pullingNow=false});
+}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')autoSync()});
 
 /* ================= 备份 / 恢复 ================= */
 async function backupJSON(){
@@ -987,6 +1013,8 @@ function switchPage(p){
   if(p==='recycle')renderRecycle();
   if(p==='dash')renderDash();
   if(p==='entry')requestAnimationFrame(()=>requestAnimationFrame(fitPreview));
+  /* v1.8.1：切换到数据页面时自动与云端对齐 */
+  if(p==='ledger'||p==='recycle'||p==='dash')autoSync();
 }
 function applyPrintLayout(){
   $('#pageStyle').textContent=settings.layout==='landscape'
@@ -996,7 +1024,7 @@ function applyPrintLayout(){
 function applySettingsUI(){
   $('#setDept').value=settings.dept;$('#setLayout').value=settings.layout;
   $('#setSbUrl').value=settings.sbUrl;$('#setSbKey').value=settings.sbKey;
-  $('#setSbTable').value=settings.sbTable;$('#setAuto').checked=!!settings.autoSync;
+  $('#setSbTable').value=settings.sbTable;
   $('#setAutoPull').checked=!!settings.autoPull;
 }
 function bind(){
@@ -1061,7 +1089,7 @@ function bind(){
     if(!list.length)return;
     if(!confirm(`确定清空回收站？将彻底删除 ${list.length} 个单据，无法恢复（会同步到所有设备）。`))return;
     list.forEach(r=>{r.purgedAt=Date.now();r.updatedAt=Date.now()});
-    persist();refreshData();toast('回收站已清空');pushIfCloud();
+    persist();refreshData();toast('回收站已清空');pushRecs(list);
   };
   /* 设置 */
   $('#setDept').oninput=e=>{settings.dept=e.target.value;persist();renderPreview()};
@@ -1069,9 +1097,10 @@ function bind(){
   $('#setSbUrl').oninput=e=>{settings.sbUrl=e.target.value.trim();persist()};
   $('#setSbKey').oninput=e=>{settings.sbKey=e.target.value.trim();persist()};
   $('#setSbTable').oninput=e=>{settings.sbTable=e.target.value.trim()||'records';persist()};
-  $('#setAuto').onchange=e=>{settings.autoSync=e.target.checked;persist()};
   $('#setAutoPull').onchange=e=>{settings.autoPull=e.target.checked;persist()};
-  $('#btnSbTest').onclick=sbTest;$('#btnSbPush').onclick=()=>sbPush(false);$('#btnSbPull').onclick=()=>sbPull(false);
+  $('#btnSbTest').onclick=sbTest;
+  $('#btnSbPush').onclick=()=>sbPush(false,'all');
+  $('#btnSbPull').onclick=()=>sbPull(false);
   $('#btnBackup').onclick=backupJSON;
   $('#btnRestoreFake').onclick=()=>$('#fileRestore').click();
   $('#fileRestore').onchange=e=>{
@@ -1105,7 +1134,7 @@ function bind(){
   console.log('%c特种耗材出入库系统 '+APP_VERSION,'color:#5C8A64;font-weight:bold');
   bind();applyPrintLayout();applySettingsUI();
   renderForm();renderPreview();refreshData();
-  if(settings.autoPull&&settings.sbUrl&&settings.sbKey)setTimeout(()=>sbPull(true),1000);
+  setTimeout(()=>autoSync(true),1000);   /* 打开页面约 1 秒后自动双向同步 */
 })();
 </script>
 </body>
