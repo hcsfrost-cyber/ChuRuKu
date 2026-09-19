@@ -103,6 +103,14 @@ tr.ldetail td{background:#F4F6EA}
 .grp-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:2px 0 8px;font-size:13px}
 #grpMgr{width:auto;max-width:180px;padding:5px 8px;font-size:13px}
 .grp-sel{width:auto;max-width:140px;font-size:12px;padding:4px 6px;border-radius:7px}
+/* ===== 导入页 ===== */
+.drop-zone{border:2px dashed #C3CBB4;border-radius:11px;padding:22px 14px;text-align:center;color:var(--sub);
+  background:#F4F6EA;cursor:pointer;transition:.15s;font-size:13px;line-height:1.8}
+.drop-zone:hover,.drop-zone.drag{border-color:var(--pri);background:var(--pri-soft);color:var(--pri-deep)}
+.file-pill{display:inline-flex;align-items:center;gap:5px;background:#F0F2E4;border:1px solid var(--bd);border-radius:999px;
+  padding:4px 12px;font-size:12px;color:#5C6553;margin:2px;max-width:100%;word-break:break-all}
+.file-pill.bad{background:var(--danger-soft);border-color:#E4CCC8;color:#A5534B}
+.dup-flag{background:var(--amber-soft);border:1px solid #E4D5B5;color:#7A5F33;border-radius:999px;font-size:11px;padding:1px 7px;margin-left:4px;white-space:nowrap}
 /* ===== 仪表盘 ===== */
 .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px}
 .stat .stat-l{font-size:13px;color:var(--sub)}
@@ -259,16 +267,19 @@ pre.sql{background:#3B4437;color:#DCE5D3;border-radius:9px;padding:10px;font-siz
 <!-- ================= 导入旧台账 ================= -->
 <section id="page-import" class="page">
   <div class="card">
-    <h3>📄 Excel / CSV 批量导入（旧电子台账）</h3>
+    <h3>📄 Excel / CSV 批量导入（旧电子台账，可多文件）</h3>
     <div class="pv-hint" style="margin:0 0 10px">
-      支持 .xlsx / .xls / .csv。表头需含：<b>日期</b>、经办人（有则识别，没有可留空）、<b>名称</b>、型号规格（可选）、<b>数量</b>、单位（可选）、单价 / 总价（金额）——列顺序不限、名称可近似匹配；<br>
-      · <b>无需「经费性质」列</b>：旧台账没记也没关系，导入时可用下方选项<b>统一指定</b>（默认留空，之后在台账中编辑补充）；<br>
-      · 相同「日期 + 经办人」的行自动合并为一张单据；无表头则按「日期 / 名称 / 型号规格 / 数量 / 单位 / 单价 / 总价」列顺序解析；<br>
-      · 导入的单据默认存入「<b>存档导入</b>」组（可改），与网页录入的单据区分开，之后可随时互移分组。
+      支持 .xlsx / .xls / .csv，<b>一次可选多个文件</b>，也可直接拖进下方区域，或分多次「追加」。<br>
+      · 表头需含：<b>日期</b>、经办人（可选）、<b>名称</b>、型号规格（可选）、<b>数量</b>、单位（可选）、单价 / 总价——列顺序不限、名称可近似匹配；<b>无需「经费性质」列</b>，导入时可统一指定；<br>
+      · 相同「日期 + 经办人」的行自动合并为一张单据；无表头则按「日期/名称/型号规格/数量/单位/单价/总价」列顺序解析；<br>
+      · 与台账中已有单据<b>完全相同</b>的会标记「疑似重复」，默认自动跳过，避免手滑重复导入；<br>
+      · 默认存入「<b>存档导入</b>」组（可改），与网页录入的单据区分开，之后可随时互移分组。
     </div>
-    <label class="btn primary" style="display:inline-block">选择 Excel / CSV 文件
-      <input type="file" id="xlFile" accept=".xlsx,.xls,.csv" class="hidden">
-    </label>
+    <div class="drop-zone" id="dropZone">
+      📁 <b>点击选择文件（可多选）</b>，或将 Excel / CSV 拖到这里<br>
+      <span style="font-size:12px">例如：2023台账.xlsx、2024台账.xlsx、2025上半年.csv …… 一批全选即可</span>
+    </div>
+    <input type="file" id="xlFile" accept=".xlsx,.xls,.csv" multiple class="hidden">
     <div id="xlPrev" style="margin-top:12px"></div>
   </div>
 </section>
@@ -411,7 +422,7 @@ create policy "all" on records for all using (true) with check (true);</pre>
 <script>
 'use strict';
 /* ================= 版本 ================= */
-const APP_VERSION='v1.9.1';
+const APP_VERSION='v1.9.2';
 
 /* ================= 工具 ================= */
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
@@ -732,8 +743,9 @@ function startEdit(rec){
   setSaveStatus('dirty','● 编辑模式：修改后点击「保存并生成三联单」将覆盖原单据'+(rec.type?'':'（注意：该单据的经费性质尚未标注，保存前需选择）'));
 }
 
-/* ================= 导入旧电子台账（Excel / CSV） ================= */
-let xlRecs=null,xlGroup=IMPORT_GROUP,xlType='';
+/* ================= 导入旧电子台账（Excel / CSV，多文件批量） ================= */
+let xlBatches=null,xlGroup=IMPORT_GROUP,xlType='',xlSkipDup=true;
+const XL_PREVIEW_MAX=60;
 function normDateStr(s){
   s=String(s||'').trim();if(!s)return'';
   if(/^\d{5}$/.test(s)){const d=new Date(Date.UTC(1899,11,30)+(+s)*86400000);
@@ -743,41 +755,168 @@ function normDateStr(s){
   return'';
 }
 function normTypeStr(s){s=String(s||'');if(s.includes('横向'))return'横向';if(s.includes('科研'))return'科研';if(s.includes('普通'))return'普通';return''}
+/* 单据指纹：用于识别"已导入过的相同单据"（明细排序后比对，顺序不同也算相同） */
+function recSig(r){
+  return r.date+'|'+(r.type||'')+'|'+(r.agent||'')+'|'+
+    r.items.map(it=>[it.name,it.spec,it.qty,it.unit,it.price,it.total].join('~')).sort().join('||');
+}
+function existingSigs(){const s=new Set();activeRecords().forEach(r=>s.add(recSig(r)));return s}
+
+/* 解析单个工作簿 → 单据数组（失败时抛错） */
+async function parseWorkbook(file){
+  const buf=await file.arrayBuffer();
+  const wb=XLSX.read(buf,{type:'array'});
+  const ws=wb.Sheets[wb.SheetNames[0]];
+  const rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:''});
+  if(!rows||!rows.length)throw new Error('文件为空');
+  /* 表头识别：经费性质为可选列，没有也能正常导入 */
+  let map=null,hi=-1;
+  for(let i=0;i<Math.min(rows.length,8);i++){
+    const r=(rows[i]||[]).map(c=>String(c).trim());
+    const idx={};
+    r.forEach((c,ci)=>{
+      if(/日期/.test(c))idx.date=ci;
+      else if(/性质/.test(c))idx.type=ci;
+      else if(/经办/.test(c))idx.agent=ci;
+      else if(/名\s*称/.test(c))idx.name=ci;
+      else if(/型号|规格/.test(c))idx.spec=ci;
+      else if(/数量/.test(c))idx.qty=ci;
+      else if(/单位/.test(c))idx.unit=ci;
+      else if(/单价/.test(c))idx.price=ci;
+      else if(/总\s*价/.test(c))idx.total=ci;
+    });
+    if(idx.total==null)r.forEach((c,ci)=>{if(/金额|合计/.test(String(c)))idx.total=ci});
+    if(idx.name!=null&&(idx.qty!=null||idx.price!=null)){map=idx;hi=i;break}
+  }
+  let start;
+  if(map){start=hi+1}
+  else{map={date:0,name:1,spec:2,qty:3,unit:4,price:5,total:6};start=0;
+    toast('「'+file.name+'」未找到表头，按固定列序解析')}
+  /* 按「日期 + 性质 + 经办人」合并为单据（性质列为空时即日期+经办人） */
+  const gm=new Map();
+  for(let i=start;i<rows.length;i++){
+    const r=rows[i]||[];
+    const cell=k=>map[k]!=null?String(r[map[k]]??'').trim():'';
+    const name=cell('name');
+    if(!name||name==='名称')continue;
+    const date=normDateStr(cell('date'));
+    const type=normTypeStr(cell('type'));
+    const agent=cell('agent');
+    const key=date+'|'+type+'|'+agent;
+    if(!gm.has(key))gm.set(key,{date,type,agent,items:[]});
+    const q=num(cell('qty')),p=num(cell('price')),t=num(cell('total'));
+    let Q=q,P=p,T=t;
+    if(Q!=null&&P!=null)T=r2(Q*P);
+    else if(Q!=null&&T!=null&&Q)P=r2(T/Q);
+    else if(P!=null&&T!=null&&P)Q=r2(T/P);
+    if(Q==null||P==null||T==null)continue;
+    gm.get(key).items.push({name,spec:cell('spec'),qty:Q,unit:cell('unit')||'件',price:P,total:T});
+  }
+  const recs=[...gm.values()].filter(g=>g.items.length)
+    .map(g=>({date:g.date||todayISO(),type:g.type,agent:g.agent,items:g.items,
+      total:r2(g.items.reduce((s,x)=>s+x.total,0))}));
+  if(!recs.length)throw new Error('没有解析到有效数据行');
+  return recs;
+}
+
+/* 批量加入文件（可多次调用追加） */
+async function addXlFiles(fileList){
+  if(!window.XLSX){toast('Excel 组件未加载（需联网）','err');return}
+  const files=[...fileList].filter(f=>/\.(xlsx|xls|csv)$/i.test(f.name));
+  if(!files.length){toast('请选择 Excel / CSV 文件','err');return}
+  if(!xlBatches)xlBatches={files:[],recs:[]};
+  let okN=0,failN=0;
+  for(const f of files){
+    try{
+      const recs=await parseWorkbook(f);
+      recs.forEach(r=>{r.__src=f.name});
+      xlBatches.files.push({name:f.name,ok:true,n:recs.length,msg:''});
+      xlBatches.recs.push(...recs);
+      okN++;
+    }catch(err){
+      xlBatches.files.push({name:f.name,ok:false,n:0,msg:(err&&err.message)||String(err)});
+      failN++;
+    }
+  }
+  renderXlPrev();
+  toast(`解析完成：成功 ${okN} 个文件${failN?`，失败 ${failN} 个（见下方红标）`:''}`);
+}
+
 function renderXlPrev(){
   const el=$('#xlPrev');
-  if(!xlRecs||!xlRecs.length){el.innerHTML='';return}
+  if(!xlBatches||!xlBatches.files.length){el.innerHTML='';return}
+  const recs=xlBatches.recs;
   const eff=r=>r.type||xlType||'';
+  /* 计算疑似重复（相对已有台账 + 批内互查） */
+  const exS=existingSigs();
+  const seen=new Set();
+  const dupFlags=recs.map(r=>{
+    const sig=recSig({...r,type:eff(r)});
+    const dup=exS.has(sig)||seen.has(sig);
+    seen.add(sig);
+    return dup;
+  });
+  const dupCount=dupFlags.filter(Boolean).length;
+  const willSave=xlSkipDup?recs.length-dupCount:recs.length;
   el.innerHTML=`
-    <div class="chips"><span class="chip c1">识别到 ${xlRecs.length} 张单据 · ${xlRecs.reduce((s,r)=>s+r.items.length,0)} 行明细</span></div>
-    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px">
-      <div class="fld" style="max-width:240px"><span>经费性质（应用于本次导入中未标注的单据）</span>
+    <div style="margin-bottom:6px">${xlBatches.files.map(f=>
+      `<span class="file-pill${f.ok?'':' bad'}">📄 ${esc(f.name)} ${f.ok?'<b>'+f.n+' 单</b>':'✘ '+esc(f.msg)}</span>`).join('')}</div>
+    ${recs.length?`
+    <div class="chips">
+      <span class="chip c1">共识别 ${recs.length} 张单据 · ${recs.reduce((s,r)=>s+r.items.length,0)} 行明细</span>
+      ${dupCount?`<span class="chip" style="background:#B98A45">疑似重复 ${dupCount} 张</span>`:''}
+      <span class="chip c3">将存入 ${willSave} 张</span>
+    </div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
+      <div class="fld" style="max-width:240px"><span>经费性质（应用于未标注的单据）</span>
         <select id="xlType">
-          <option value="" ${!xlType?'selected':''}>留空（稍后在台账中编辑补充）</option>
+          <option value="" ${!xlType?'selected':''}>留空（稍后编辑补充）</option>
           <option ${xlType==='普通'?'selected':''}>普通</option>
           <option ${xlType==='横向'?'selected':''}>横向</option>
           <option ${xlType==='科研'?'selected':''}>科研</option>
         </select></div>
-      <div class="fld" style="max-width:240px"><span>存入分组</span>
+      <div class="fld" style="max-width:200px"><span>存入分组</span>
         <select id="xlGroup">${allGroups().map(g=>`<option value="${esc(g)}" ${g===xlGroup?'selected':''}>${esc(g)}</option>`).join('')}</select></div>
+      <label style="display:flex;gap:6px;align-items:center;font-size:13px;padding-bottom:6px">
+        <input type="checkbox" id="xlSkipDup" style="width:auto" ${xlSkipDup?'checked':''}> 跳过疑似重复的单据（推荐）
+      </label>
     </div>
-    <div class="table-scroll"><table class="tb"><thead><tr><th>日期</th><th>经费性质</th><th>经办人</th><th>项目数</th><th style="text-align:right">金额</th></tr></thead><tbody>${
-      xlRecs.map(r=>`<tr><td>${esc(r.date)}</td><td>${eff(r)?`<span class="badge b-${esc(eff(r))}">${esc(eff(r))}</span>`:'—'}</td><td>${esc(r.agent)||'—'}</td><td>${r.items.length}</td><td class="num">${money(r.total)}</td></tr>`).join('')
-    }</tbody></table></div>
-    <div class="actions"><button class="btn primary" id="xlSave">💾 全部存入台账</button><button class="btn" id="xlCancel">取消</button></div>`;
-  $('#xlType').onchange=e=>{xlType=e.target.value;renderXlPrev()};
-  $('#xlGroup').onchange=e=>{xlGroup=e.target.value};
-  $('#xlSave').onclick=()=>{
-    const now=Date.now();
+    <div class="table-scroll"><table class="tb"><thead><tr><th>日期</th><th>经费性质</th><th>经办人</th><th>项目数</th><th style="text-align:right">金额</th><th>来源文件</th></tr></thead><tbody>${
+      recs.slice(0,XL_PREVIEW_MAX).map((r,i)=>`<tr><td>${esc(r.date)}</td><td>${eff(r)?`<span class="badge b-${esc(eff(r))}">${esc(eff(r))}</span>`:'—'}</td><td>${esc(r.agent)||'—'}</td><td>${r.items.length}</td><td class="num">${money(r.total)}</td><td style="font-size:12px">${esc(r.__src||'')}${dupFlags[i]?'<span class="dup-flag">疑似重复</span>':''}</td></tr>`).join('')
+    }${recs.length>XL_PREVIEW_MAX?`<tr><td colspan="6" class="empty">… 共 ${recs.length} 张，仅预览前 ${XL_PREVIEW_MAX} 张（存入时全部包含）</td></tr>`:''}</tbody></table></div>
+    <div class="actions">
+      <button class="btn primary" id="xlSave">💾 存入台账（${willSave} 张）</button>
+      <button class="btn" id="xlMore">＋ 追加更多文件</button>
+      <button class="btn danger" id="xlClear">清空重选</button>
+    </div>`:
+    `<div class="empty">所有文件均未解析出有效数据，请检查格式后「追加」或「清空重选」</div>
+    <div class="actions"><button class="btn" id="xlMore">＋ 追加更多文件</button><button class="btn danger" id="xlClear">清空重选</button></div>`}`;
+  const tSel=$('#xlType');if(tSel)tSel.onchange=e=>{xlType=e.target.value;renderXlPrev()};
+  const gSel=$('#xlGroup');if(gSel)gSel.onchange=e=>{xlGroup=e.target.value};
+  const dSel=$('#xlSkipDup');if(dSel)dSel.onchange=e=>{xlSkipDup=e.target.checked;renderXlPrev()};
+  const more=$('#xlMore');if(more)more.onclick=()=>$('#xlFile').click();
+  const clr=$('#xlClear');if(clr)clr.onclick=()=>{xlBatches=null;renderXlPrev()};
+  const sv=$('#xlSave');if(sv)sv.onclick=()=>{
     const grp=(xlGroup&&allGroups().includes(xlGroup))?xlGroup:IMPORT_GROUP;
-    const recs=xlRecs.map((r,i)=>({id:uid(),date:r.date,type:r.type||xlType||'',agent:r.agent,
-      group:grp,items:r.items,total:r.total,createdAt:now+i,updatedAt:now+i,imported:true}));
-    records.push(...recs);persist();refreshData();
-    const noType=recs.filter(r=>!r.type).length;
-    xlRecs=null;renderXlPrev();
-    toast(`已存入 ${recs.length} 张单据（组：${grp}）✔`+(noType?`，其中 ${noType} 张经费性质留空，可稍后编辑补充`:''));
-    pushRecs(recs);
+    const exSigs=existingSigs();
+    const seen2=new Set();
+    const now=Date.now();
+    const out=[];let skipped=0;
+    recs.forEach(r=>{
+      const sig=recSig({...r,type:r.type||xlType||''});
+      if(xlSkipDup&&(exSigs.has(sig)||seen2.has(sig))){skipped++;return}
+      seen2.add(sig);
+      out.push({id:uid(),date:r.date,type:r.type||xlType||'',agent:r.agent,group:grp,
+        items:r.items,total:r.total,createdAt:now+out.length,updatedAt:now+out.length,
+        imported:true,src:r.__src||''});
+    });
+    if(!out.length){toast('没有可保存的单据（全部识别为重复，已跳过）','err');xlBatches=null;renderXlPrev();return}
+    records.push(...out);persist();refreshData();
+    const noType=out.filter(r=>!r.type).length;
+    toast(`已存入 ${out.length} 张单据（组：${grp}）✔`+(skipped?`，跳过重复 ${skipped} 张`:'')+(noType?`，${noType} 张性质留空`:''));
+    pushRecs(out);
+    xlBatches=null;renderXlPrev();
   };
-  $('#xlCancel').onclick=()=>{xlRecs=null;renderXlPrev()};
 }
 
 /* ================= 台账 ================= */
@@ -1271,67 +1410,22 @@ function bind(){
     list.forEach(r=>{r.purgedAt=Date.now();r.updatedAt=Date.now()});
     persist();refreshData();toast('回收站已清空');pushRecs(list);
   };
-  /* 导入页：Excel / CSV */
-  $('#xlFile').addEventListener('change',async e=>{
-    const f=e.target.files[0];e.target.value='';
-    if(!f)return;
-    if(!window.XLSX){toast('Excel 组件未加载（需联网）','err');return}
-    try{
-      const buf=await f.arrayBuffer();
-      const wb=XLSX.read(buf,{type:'array'});
-      const ws=wb.Sheets[wb.SheetNames[0]];
-      const rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:''});
-      if(!rows||!rows.length)throw new Error('文件为空');
-      /* 表头识别：经费性质为可选列，没有也能正常导入 */
-      let map=null,hi=-1;
-      for(let i=0;i<Math.min(rows.length,8);i++){
-        const r=(rows[i]||[]).map(c=>String(c).trim());
-        const idx={};
-        r.forEach((c,ci)=>{
-          if(/日期/.test(c))idx.date=ci;
-          else if(/性质/.test(c))idx.type=ci;
-          else if(/经办/.test(c))idx.agent=ci;
-          else if(/名\s*称/.test(c))idx.name=ci;
-          else if(/型号|规格/.test(c))idx.spec=ci;
-          else if(/数量/.test(c))idx.qty=ci;
-          else if(/单位/.test(c))idx.unit=ci;
-          else if(/单价/.test(c))idx.price=ci;
-          else if(/总\s*价/.test(c))idx.total=ci;
-        });
-        if(idx.total==null)r.forEach((c,ci)=>{if(/金额|合计/.test(String(c)))idx.total=ci});
-        if(idx.name!=null&&(idx.qty!=null||idx.price!=null)){map=idx;hi=i;break}
-      }
-      let start;
-      if(map){start=hi+1}
-      else{map={date:0,name:1,spec:2,qty:3,unit:4,price:5,total:6};start=0;
-        toast('未找到表头，按「日期/名称/型号规格/数量/单位/单价/总价」列顺序解析')}
-      /* 按「日期 + 经办人」合并为单据（性质列为空时即日期+经办人） */
-      const gm=new Map();
-      for(let i=start;i<rows.length;i++){
-        const r=rows[i]||[];
-        const cell=k=>map[k]!=null?String(r[map[k]]??'').trim():'';
-        const name=cell('name');
-        if(!name||name==='名称')continue;
-        const date=normDateStr(cell('date'));
-        const type=normTypeStr(cell('type'));   /* 无该列 → 空，由导入时统一指定 */
-        const agent=cell('agent');
-        const key=date+'|'+type+'|'+agent;
-        if(!gm.has(key))gm.set(key,{date,type,agent,items:[]});
-        const q=num(cell('qty')),p=num(cell('price')),t=num(cell('total'));
-        let Q=q,P=p,T=t;
-        if(Q!=null&&P!=null)T=r2(Q*P);
-        else if(Q!=null&&T!=null&&Q)P=r2(T/Q);
-        else if(P!=null&&T!=null&&P)Q=r2(T/P);
-        if(Q==null||P==null||T==null)continue;
-        gm.get(key).items.push({name,spec:cell('spec'),qty:Q,unit:cell('unit')||'件',price:P,total:T});
-      }
-      const recs=[...gm.values()].filter(g=>g.items.length)
-        .map(g=>({date:g.date||todayISO(),type:g.type,agent:g.agent,items:g.items,
-          total:r2(g.items.reduce((s,x)=>s+x.total,0))}));
-      if(!recs.length)throw new Error('没有解析到有效数据行');
-      xlRecs=recs;xlGroup=IMPORT_GROUP;xlType='';renderXlPrev();
-    }catch(err){toast('导入失败：'+(err.message||err),'err')}
+  /* 导入页：多文件选择 + 拖拽 */
+  $('#xlFile').addEventListener('change',e=>{
+    const files=e.target.files;
+    if(files&&files.length)addXlFiles(files);
+    e.target.value='';
   });
+  const dz=$('#dropZone');
+  if(dz){
+    dz.addEventListener('click',()=>$('#xlFile').click());
+    dz.addEventListener('dragover',e=>{e.preventDefault();e.stopPropagation();dz.classList.add('drag')});
+    dz.addEventListener('dragleave',()=>dz.classList.remove('drag'));
+    dz.addEventListener('drop',e=>{
+      e.preventDefault();e.stopPropagation();dz.classList.remove('drag');
+      if(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files.length)addXlFiles(e.dataTransfer.files);
+    });
+  }
   /* 设置 */
   $('#setDept').oninput=e=>{settings.dept=e.target.value;persist();renderPreview()};
   $('#setLayout').onchange=e=>{settings.layout=e.target.value;persist();applyPrintLayout();renderPreview();toast('已切换版式：'+(settings.layout==='portrait'?'竖版三联·横向裁剪':'横版三联并排'))};
