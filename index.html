@@ -330,12 +330,16 @@ pre.sql{background:#3B4437;color:#DCE5D3;border-radius:9px;padding:10px;font-siz
       <label style="display:flex;gap:6px;align-items:center;font-size:13px;margin-bottom:6px">
         <input type="checkbox" id="setAuto" style="width:auto"> 保存单据后自动上传云端
       </label>
+      <label style="display:flex;gap:6px;align-items:center;font-size:13px;margin-bottom:6px">
+        <input type="checkbox" id="setAutoPull" style="width:auto"> 打开页面时自动从云端拉取（推荐）
+      </label>
       <div class="row-btns">
         <button class="btn sm" id="btnSbTest">测试连接</button>
         <button class="btn sm" id="btnSbPush">⬆ 上传到云端</button>
         <button class="btn sm" id="btnSbPull">⬇ 从云端拉取</button>
       </div>
       <div id="sbStatus"></div>
+      <div class="pv-hint">同步机制：保存单据自动上传 ✔；打开 / 刷新页面约 1 秒后自动拉取最新（可在上方关闭）；「⬇ 从云端拉取」随时可手动使用。正在填写的表单不会被同步打断，同一张单以最后修改时间为准，不会互相覆盖。</div>
       <div class="pv-hint">在 Supabase SQL Editor 中执行：</div>
       <pre class="sql">create table if not exists records (
   id text primary key,
@@ -358,7 +362,7 @@ create policy "all" on records for all using (true) with check (true);</pre>
 <script>
 'use strict';
 /* ================= 版本 ================= */
-const APP_VERSION='v1.7.2';
+const APP_VERSION='v1.7.3';
 
 /* ================= 工具 ================= */
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
@@ -405,7 +409,7 @@ function debounce(fn,ms){let h;return(...a)=>{clearTimeout(h);h=setTimeout(()=>f
 const LS_REC='tkc_records_v1',LS_SET='tkc_settings_v1';
 function load(k,d){try{const v=JSON.parse(localStorage.getItem(k));return v??d}catch(e){return d}}
 let records=load(LS_REC,[]);
-let settings=Object.assign({dept:'特种设备学院',layout:'portrait',sbUrl:'',sbKey:'',sbTable:'records',autoSync:false},load(LS_SET,{}));
+let settings=Object.assign({dept:'特种设备学院',layout:'portrait',sbUrl:'',sbKey:'',sbTable:'records',autoSync:false,autoPull:true},load(LS_SET,{}));
 const filters={year:String(new Date().getFullYear()),month:'',type:'',agent:''};
 const dash={year:String(new Date().getFullYear()),type:''};
 let draft=null,editingId=null;const chartRefs={};
@@ -419,7 +423,6 @@ function setSaveStatus(type,msg){
   el.className=type;el.textContent=msg;
 }
 function markDirty(){setSaveStatus('dirty','● 内容已修改，尚未保存 —— 修改完成后请点击「保存并生成三联单」')}
-/* 必填项校验可视化：给未填控件加红框，2.5 秒后自动消除 */
 function flagInvalid(el){if(!el)return;el.classList.add('invalid');setTimeout(()=>el.classList.remove('invalid'),2500)}
 
 /* ===== 图表护眼配色 ===== */
@@ -427,7 +430,6 @@ const CH_COLORS={green:'#6E9A78',amber:'#C29A57',teal:'#7FA8A0',grid:'#E2E6D4',t
 
 /* ================= 表单 ================= */
 const emptyItem=()=>({name:'',spec:'',qty:'',unit:'件',price:'',total:''});
-/* 经费性质默认空白，避免漏选误存为"普通" */
 const newDraft=()=>({date:todayISO(),type:'',agent:'',items:[emptyItem()]});
 function draftRec(){return{date:draft.date,type:draft.type,agent:draft.agent,
   dept:settings.dept,items:draft.items,total:grandTotal()}}
@@ -879,9 +881,10 @@ async function sbPush(silent){
     setSbStatus('✔ 已上传 '+body.length+' 条 · '+new Date().toLocaleTimeString(),'ok');
   }catch(e){setSbStatus('✘ 上传失败：'+e.message,'err');if(!silent)toast('云端上传失败','err')}
 }
-async function sbPull(){
-  const c=sbCfg();if(!c.url||!c.key){setSbStatus('未配置云端','err');return}
-  setSbStatus('拉取中…');
+/* v1.7.3：sbPull 支持 silent 模式（打开页面自动拉取用，静默、不打断填写） */
+async function sbPull(silent){
+  const c=sbCfg();if(!c.url||!c.key){if(!silent)setSbStatus('未配置云端','err');return}
+  if(!silent)setSbStatus('拉取中…');
   try{
     const r=await fetch(`${c.url}/rest/v1/${c.table}?select=id,payload,updated_at`,{headers:sbHeaders()});
     if(!r.ok)throw new Error(r.status+' '+(await r.text()).slice(0,140));
@@ -889,9 +892,20 @@ async function sbPull(){
     rows.forEach(row=>{const rec=row.payload;if(!rec||!rec.id)return;const loc=byId.get(rec.id);
       if(!loc){records.push(rec);byId.set(rec.id,rec);added++}
       else if((rec.updatedAt||0)>(loc.updatedAt||0)){Object.assign(loc,rec);merged++}});
-    if(added||merged){persist();refreshData();renderForm();renderPreview()}
-    setSbStatus(`✔ 拉取完成：新增 ${added}，更新 ${merged}`,'ok');
-  }catch(e){setSbStatus('✘ 拉取失败：'+e.message,'err')}
+    if(added||merged){
+      persist();refreshData();
+      /* 用户正在填写/编辑时只刷新台账，不动表单与预览，避免打断 */
+      const busy=!!(editingId||(draft&&(draft.type||(draft.agent||'').trim()||draft.items.some(it=>(it.name||'').trim()))));
+      if(!busy){renderForm();renderPreview()}
+    }
+    if(silent){
+      if(added||merged)toast(`已自动同步：新增 ${added} 单，更新 ${merged} 单`);
+    }else{
+      setSbStatus(`✔ 拉取完成：新增 ${added}，更新 ${merged}`,'ok');
+    }
+  }catch(e){
+    if(!silent)setSbStatus('✘ 拉取失败：'+e.message,'err');
+  }
 }
 
 /* ================= 备份 / 恢复 ================= */
@@ -924,6 +938,7 @@ function applySettingsUI(){
   $('#setDept').value=settings.dept;$('#setLayout').value=settings.layout;
   $('#setSbUrl').value=settings.sbUrl;$('#setSbKey').value=settings.sbKey;
   $('#setSbTable').value=settings.sbTable;$('#setAuto').checked=!!settings.autoSync;
+  $('#setAutoPull').checked=!!settings.autoPull;
 }
 function bind(){
   $$('nav button').forEach(b=>b.onclick=()=>switchPage(b.dataset.page));
@@ -982,7 +997,8 @@ function bind(){
   $('#setSbKey').oninput=e=>{settings.sbKey=e.target.value.trim();persist()};
   $('#setSbTable').oninput=e=>{settings.sbTable=e.target.value.trim()||'records';persist()};
   $('#setAuto').onchange=e=>{settings.autoSync=e.target.checked;persist()};
-  $('#btnSbTest').onclick=sbTest;$('#btnSbPush').onclick=()=>sbPush(false);$('#btnSbPull').onclick=sbPull;
+  $('#setAutoPull').onchange=e=>{settings.autoPull=e.target.checked;persist()};
+  $('#btnSbTest').onclick=sbTest;$('#btnSbPush').onclick=()=>sbPush(false);$('#btnSbPull').onclick=()=>sbPull(false);
   $('#btnBackup').onclick=backupJSON;
   $('#btnRestoreFake').onclick=()=>$('#fileRestore').click();
   $('#fileRestore').onchange=e=>{
@@ -1016,6 +1032,8 @@ function bind(){
   console.log('%c特种耗材出入库系统 '+APP_VERSION,'color:#5C8A64;font-weight:bold');
   bind();applyPrintLayout();applySettingsUI();
   renderForm();renderPreview();refreshData();
+  /* v1.7.3：打开页面约 1 秒后自动从云端拉取最新（可在设置中关闭） */
+  if(settings.autoPull&&settings.sbUrl&&settings.sbKey)setTimeout(()=>sbPull(true),1000);
 })();
 </script>
 </body>
