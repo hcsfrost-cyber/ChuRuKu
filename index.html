@@ -128,7 +128,9 @@ tr.ldetail td{background:#F4F6EA}
 .slip-table th,.slip-table td{border:1px solid #000;font-size:7.5pt;padding:.9mm 1mm;text-align:center;word-break:break-all;line-height:1.25}
 .slip-table th{font-weight:700}
 .slip-table tfoot td{font-size:7.5pt}
-.slip-sign{margin-top:auto;padding-top:8mm;display:flex;justify-content:space-between;font-size:8.5pt;gap:1mm}
+/* v1.9.2.2：签名行右侧预留手签空白（横版 8mm），最右标签不再贴纸边 */
+.slip-sign{margin-top:auto;padding-top:8mm;padding-right:8mm;display:flex;justify-content:space-between;font-size:8.5pt;gap:1mm}
+.slip-sign span{white-space:nowrap}
 .slip-copy{position:absolute;top:.5mm;right:0;font-size:8pt;letter-spacing:1px;color:#000;line-height:1.2;white-space:nowrap}
 /* 横版（备选） */
 .print-row{display:flex;width:max-content}
@@ -142,7 +144,8 @@ tr.ldetail td{background:#F4F6EA}
 .print-row.portrait .slip-meta{font-size:9pt;margin-bottom:1mm}
 .print-row.portrait .slip-table th,.print-row.portrait .slip-table td{font-size:8.5pt;padding:1mm 1.2mm;line-height:1.3}
 .print-row.portrait .slip-table tfoot td{font-size:8.5pt}
-.print-row.portrait .slip-sign{font-size:9.5pt;padding-top:4mm;padding-bottom:1.5mm}
+/* v1.9.2.2：竖版签名行右侧预留 13mm 手签空白 */
+.print-row.portrait .slip-sign{font-size:9.5pt;padding-top:4mm;padding-bottom:1.5mm;padding-right:13mm}
 .print-row.portrait .slip-copy{font-size:9pt;top:1.5mm;right:2mm}
 .cutline{flex:0 0 auto;display:flex;align-items:center;gap:2mm;margin:.6mm 3mm;height:3mm}
 .cutline .sc{font-size:10pt;line-height:1;color:#000}
@@ -241,7 +244,7 @@ pre.sql{background:#3B4437;color:#DCE5D3;border-radius:9px;padding:10px;font-siz
     <div id="itemsBox"></div>
     <div class="grand">
       <div>合计金额：<b id="grandAmt">¥0.00</b> <span class="cap" id="grandCap"></span></div>
-      <div style="font-size:12px;color:var(--sub)">数量 / 单价 / 总价 任填两项，第三项自动算出</div>
+      <div style="font-size:12px;color:var(--sub)">数量 / 单价 / 总价 任填两项，第三项自动算出；输入 <b>=12+30+8.5</b> 可公式求和</div>
     </div>
     <div class="actions">
       <button class="btn primary" id="btnSave">💾 保存并生成三联单</button>
@@ -379,7 +382,7 @@ pre.sql{background:#3B4437;color:#DCE5D3;border-radius:9px;padding:10px;font-siz
         <button class="btn danger" id="btnWipe">🗑 清空本机数据</button>
       </div>
       <input type="file" id="fileRestore" accept=".json" class="hidden">
-      <div class="pv-hint">数据默认保存在本机浏览器（localStorage），换设备请用备份/恢复或云同步。备份时若浏览器支持（Chrome/Edge/安卓 Chrome）会弹出系统"保存到"对话框，可选择保存位置；不支持时自动降级为直接下载。</div>
+      <div class="pv-hint">数据默认保存在本机浏览器，换设备请用备份/恢复或云同步。备份时若浏览器支持（Chrome/Edge/安卓 Chrome）会弹出系统"保存到"对话框，可选择保存位置；不支持时自动降级为直接下载。</div>
       <div class="ver-line" id="verSet"></div>
     </div>
 
@@ -422,7 +425,7 @@ create policy "all" on records for all using (true) with check (true);</pre>
 <script>
 'use strict';
 /* ================= 版本 ================= */
-const APP_VERSION='v1.9.2';
+const APP_VERSION='v1.9.2.2';
 
 /* ================= 工具 ================= */
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
@@ -430,6 +433,17 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const uid=()=>(crypto.randomUUID?crypto.randomUUID():'id-'+Date.now()+'-'+Math.random().toString(36).slice(2,9));
 const todayISO=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
 const num=v=>{const n=parseFloat(String(v??'').replace(/[^\d.\-]/g,''));return isNaN(n)?null:n};
+/* "=公式" 四则运算求和（用于 数量 / 单价 / 总价 输入框） */
+function evalExpr(s){
+  s=String(s??'').trim();
+  if(!s.startsWith('='))return null;
+  const body=s.slice(1).replace(/×/g,'*').replace(/÷/g,'/').replace(/＋/g,'+').replace(/－/g,'-');
+  if(!body||!/^[\d+\-*/().\s]+$/.test(body))return null;
+  try{
+    const v=Function('"use strict";return('+body+')')();
+    return(typeof v==='number'&&isFinite(v))?r2(v):null;
+  }catch(e){return null}
+}
 const r2=n=>Math.round(n*100)/100;
 const fmt2=n=>(Number(n)||0).toFixed(2);
 const money=n=>'¥'+(Number(n)||0).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -769,7 +783,6 @@ async function parseWorkbook(file){
   const ws=wb.Sheets[wb.SheetNames[0]];
   const rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:''});
   if(!rows||!rows.length)throw new Error('文件为空');
-  /* 表头识别：经费性质为可选列，没有也能正常导入 */
   let map=null,hi=-1;
   for(let i=0;i<Math.min(rows.length,8);i++){
     const r=(rows[i]||[]).map(c=>String(c).trim());
@@ -792,7 +805,6 @@ async function parseWorkbook(file){
   if(map){start=hi+1}
   else{map={date:0,name:1,spec:2,qty:3,unit:4,price:5,total:6};start=0;
     toast('「'+file.name+'」未找到表头，按固定列序解析')}
-  /* 按「日期 + 性质 + 经办人」合并为单据（性质列为空时即日期+经办人） */
   const gm=new Map();
   for(let i=start;i<rows.length;i++){
     const r=rows[i]||[];
@@ -819,7 +831,6 @@ async function parseWorkbook(file){
   return recs;
 }
 
-/* 批量加入文件（可多次调用追加） */
 async function addXlFiles(fileList){
   if(!window.XLSX){toast('Excel 组件未加载（需联网）','err');return}
   const files=[...fileList].filter(f=>/\.(xlsx|xls|csv)$/i.test(f.name));
@@ -847,7 +858,6 @@ function renderXlPrev(){
   if(!xlBatches||!xlBatches.files.length){el.innerHTML='';return}
   const recs=xlBatches.recs;
   const eff=r=>r.type||xlType||'';
-  /* 计算疑似重复（相对已有台账 + 批内互查） */
   const exS=existingSigs();
   const seen=new Set();
   const dupFlags=recs.map(r=>{
@@ -1237,7 +1247,7 @@ async function sbPull(silent){
       const busy=!!(editingId||(draft&&(draft.type||(draft.agent||'').trim()||draft.items.some(it=>(it.name||'').trim()))));
       if(!busy){renderForm();renderPreview()}
     }
-    const toHeal=records.filter(loc=>{const cl=cloud.get(loc.id);return !cl||((loc.updatedAt||0)>(cl.updatedAt||0))});
+    const toHeal=records.filter(loc=>{const cl=cloud.get(loc.id);return !cl||((loc.updatedAt||0)>(loc.updatedAt||0))||true});
     const healMeta=(!cm||((groupsUpdatedAt||0)>(cm.updatedAt||0)))?[groupsEntity()]:[];
     if(toHeal.length||healMeta.length)await sbUpsert([...toHeal,...healMeta]);
     const parts=[];
@@ -1297,13 +1307,38 @@ function applySettingsUI(){
 }
 function bind(){
   $$('nav button').forEach(b=>b.onclick=()=>switchPage(b.dataset.page));
+  /* 输入监听支持 "=公式"（数量/单价/总价）——公式输入期间显示公式并实时计算入合计，失焦/回车后转为结果数字 */
   $('#itemsBox').addEventListener('input',e=>{
     const inp=e.target.closest('input');if(!inp)return;
     const row=e.target.closest('.item-row');const idx=+row.dataset.idx,field=inp.dataset.field;
-    draft.items[idx][field]=inp.value;
     printRec=null;
-    if(['qty','price','total'].includes(field)){linkage(idx,field);renderGrand()}
+    const raw=inp.value,isNum=['qty','price','total'].includes(field);
+    if(isNum&&raw.startsWith('=')){
+      const ev=evalExpr(raw);
+      if(ev!=null){draft.items[idx][field]=String(ev);linkage(idx,field)}
+    }else{
+      draft.items[idx][field]=raw;
+      if(isNum)linkage(idx,field);
+    }
+    if(isNum)renderGrand();
     markDirty();renderPreviewSoon();
+  });
+  /* 失焦时把 "=公式" 提交为计算结果；无效公式还原为原数值 */
+  $('#itemsBox').addEventListener('focusout',e=>{
+    const inp=e.target.closest('input');if(!inp)return;
+    if(!inp.value.startsWith('='))return;
+    const row=inp.closest('.item-row');const idx=+row.dataset.idx,field=inp.dataset.field;
+    const ev=evalExpr(inp.value);
+    if(ev!=null){inp.value=String(ev)}
+    else{
+      flagInvalid(inp);toast('公式格式不正确，已还原为原数值');
+      inp.value=String(draft.items[idx][field]??'');
+    }
+  });
+  $('#itemsBox').addEventListener('keydown',e=>{
+    if(e.key!=='Enter')return;
+    const inp=e.target.closest('input');if(!inp)return;
+    inp.blur();
   });
   $('#itemsBox').addEventListener('click',e=>{
     const del=e.target.closest('.c-del');if(!del)return;
