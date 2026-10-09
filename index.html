@@ -111,6 +111,22 @@ tr.ldetail td{background:#F4F6EA}
   padding:4px 12px;font-size:12px;color:#5C6553;margin:2px;max-width:100%;word-break:break-all}
 .file-pill.bad{background:var(--danger-soft);border-color:#E4CCC8;color:#A5534B}
 .dup-flag{background:var(--amber-soft);border:1px solid #E4D5B5;color:#7A5F33;border-radius:999px;font-size:11px;padding:1px 7px;margin-left:4px;white-space:nowrap}
+/* ===== 发票识别（v1.10.0 新增） ===== */
+.inv-meta{margin:6px 0;font-size:12px;color:var(--sub);line-height:1.7;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
+.inv-meta .fld{margin:0;min-width:150px;flex:1 1 150px}
+.warn-flag{background:var(--amber-soft);border:1px solid #E4D5B5;color:#7A5F33;border-radius:999px;font-size:11px;padding:1px 7px;margin-left:4px;white-space:nowrap}
+.inv-rev{border:1px solid var(--bd);border-radius:11px;padding:10px;margin:8px 0;background:#FDFDF8}
+.inv-rev h4{font-size:13px;color:var(--pri-deep);margin-bottom:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.inv-rev input{border:1px solid #E0E4D4;border-radius:7px;padding:4px 7px;font-size:12px;background:#fff}
+.inv-rev input.inv-warn{border-color:#D8BE86;background:#FDF8EE}
+.inv-rev table{width:100%;border-collapse:collapse;font-size:12px}
+.inv-rev th,.inv-rev td{border:1px solid var(--bd);padding:3px 5px;text-align:center}
+.inv-rev th{background:#EFF2E2;color:#5C6553;font-size:11px}
+.inv-rev td input{width:100%;min-width:52px;text-align:center}
+.inv-rev .inv-wlist{font-size:11px;color:#8A6B3A;margin-top:5px;line-height:1.7}
+.inv-step{font-size:12px;background:#F0F2E4;border:1px solid var(--bd);border-radius:999px;padding:3px 10px;color:var(--sub)}
+.inv-prog{height:6px;border-radius:99px;background:#E4E8D8;overflow:hidden;margin-top:8px}
+.inv-prog i{display:block;height:100%;width:0;background:var(--pri);transition:.2s}
 /* ===== 仪表盘 ===== */
 .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px}
 .stat .stat-l{font-size:13px;color:var(--sub)}
@@ -233,6 +249,38 @@ pre.sql{background:#3B4437;color:#DCE5D3;border-radius:9px;padding:10px;font-siz
       <div class="fld"><span>经办人 <i class="req">*</i></span><input id="fAgent" list="dlAgents" placeholder="用于文件命名与台账"></div>
       <div class="fld"><span>分组</span><select id="fGroup"></select></div>
     </div>
+  </div>
+
+  <div class="card" id="invCard">
+    <h3>🧾 发票识别填单（本地解析，不上传）
+      <button class="btn sm" id="invClear">清空发票</button>
+    </h3>
+    <div class="pv-hint" style="margin:0 0 10px">
+      上传发票后自动识别，并把 <b>开票日期 / 明细（名称·型号规格·数量·单位·单价·总价）</b> 填进下方开单表单；
+      「经办人 / 经费性质」发票上没有，请在<b>上方单据信息</b>里手填，本卡不会覆盖。<br>
+      · 支持 <b>电子发票 PDF</b>、<b>数电票 XML</b>、<b>扫描件 / 图片（JPG·PNG·BMP·WEBP）</b>，可<b>一次多张</b>；不支持 OFD（请先转 PDF）。<br>
+      · 调用顺序：先读 PDF 内嵌 XML（最准）→ 再读 PDF 文本层 → 都没有才走<b>本地 OCR</b>。全部在本机完成，<b>发票不会上传服务器</b>。<br>
+      · 金额按 <b>含税（价税合计）</b> 口径，并用票面「价税合计」整单对账；<b>扫描件 / 图片</b>首次使用需联网下载中文识别模型（约十几 MB，之后走浏览器缓存）。<br>
+      · 识别结果一律进入<b>可编辑校对</b>区，请核对后再填入表单。
+    </div>
+
+    <div class="drop-zone" id="invDrop">📁 <b>点击选择发票（可多选）</b>，或把 PDF / XML / 图片拖到这里</div>
+    <input type="file" id="invFile" accept=".pdf,.xml,.jpg,.jpeg,.png,.bmp,.webp,application/pdf,text/xml,image/*" multiple class="hidden">
+
+    <div class="grp-bar" style="margin-top:10px">
+      <span style="font-size:12px;color:var(--sub)">处理模式：</span>
+      <label style="display:flex;gap:5px;align-items:center;font-size:13px">
+        <input type="radio" name="invMode" id="invModeA" value="merge" checked style="width:auto"> A · 合并成一张出入库单
+      </label>
+      <label style="display:flex;gap:5px;align-items:center;font-size:13px">
+        <input type="radio" name="invMode" id="invModeB" value="each" style="width:auto"> B · 逐张填入（逐张保存 / 打印）
+      </label>
+    </div>
+
+    <div id="invList" style="margin-top:8px"></div>
+    <div class="inv-prog hidden" id="invProg"><i></i></div>
+    <div id="invPrev" style="margin-top:6px"></div>
+    <div class="actions" id="invActions"></div>
   </div>
 
   <div class="card">
@@ -424,7 +472,7 @@ create policy "all" on records for all using (true) with check (true);</pre>
 <script>
 'use strict';
 /* ================= 版本 ================= */
-const APP_VERSION='v1.9.2.3';
+const APP_VERSION='v1.11.1';
 
 /* ================= 工具 ================= */
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
@@ -543,7 +591,7 @@ const CH_COLORS={green:'#6E9A78',amber:'#C29A57',teal:'#7FA8A0',gray:'#7C8577',g
 
 /* ================= 表单 ================= */
 const emptyItem=()=>({name:'',spec:'',qty:'',unit:'件',price:'',total:''});
-const newDraft=()=>({date:todayISO(),type:'',agent:'',group:DEFAULT_GROUP,items:[emptyItem()]});
+const newDraft=()=>({date:todayISO(),type:'',agent:'',group:DEFAULT_GROUP,items:[emptyItem()],invoices:[]});
 function draftRec(){return{date:draft.date,type:draft.type,agent:draft.agent,
   dept:settings.dept,items:draft.items,total:grandTotal()}}
 
@@ -704,7 +752,8 @@ function collectRecord(){
     if(!name&&!spec&&q==null&&p==null&&t==null)continue;
     if(!name)return{ok:false,msg:`第 ${i+1} 行缺少名称`,focus:undefined};
     let Q=q,P=p,T=t;
-    if(Q!=null&&P!=null)T=r2(Q*P);
+    if(it.tLock&&T!=null)T=r2(T);          /* 发票含税口径：保留权威总价，不按 qty×price 反算 */
+    else if(Q!=null&&P!=null)T=r2(Q*P);
     else if(Q!=null&&T!=null&&Q!==0)P=r2(T/Q);
     else if(P!=null&&T!=null&&P!==0)Q=r2(T/P);
     if(Q==null||P==null||T==null)return{ok:false,msg:`第 ${i+1} 行：数量/单价/总价 请至少填两项`,focus:undefined};
@@ -724,14 +773,18 @@ function onSave(){
   }
   const wasEdit=!!editingId;
   const rec=res.record;rec.updatedAt=Date.now();
+  const invMeta=(draft.invoices&&draft.invoices.length)?draft.invoices.slice():null;
   if(wasEdit){
     const i=records.findIndex(r=>r.id===editingId);
     rec.id=editingId;rec.createdAt=(records[i]&&records[i].createdAt)||Date.now();
     if(!rec.agent&&records[i]&&records[i].teacher)rec.agent=records[i].teacher;
+    if(invMeta)rec.invoice=invMeta;else if(records[i]&&records[i].invoice)rec.invoice=records[i].invoice;
     if(i>=0)records[i]=rec;else records.push(rec);
     editingId=null;
   }else{
-    rec.id=uid();rec.createdAt=Date.now();records.push(rec);
+    rec.id=uid();rec.createdAt=Date.now();
+    if(invMeta)rec.invoice=invMeta;
+    records.push(rec);
   }
   persist();
   draft=newDraft();draft.type=rec.type;draft.agent=rec.agent;draft.group=rec.group;
@@ -751,6 +804,7 @@ function onSave(){
 function startEdit(rec){
   editingId=rec.id;printRec=null;
   draft={date:rec.date,type:rec.type||'',agent:personOf(rec),group:groupOf(rec),
+    invoices:(rec.invoice||[]).slice(),
     items:rec.items.map(it=>({name:it.name,spec:it.spec,qty:String(it.qty),unit:it.unit,price:String(it.price),total:String(it.total)}))};
   switchPage('entry');renderForm();renderPreview();
   setSaveStatus('dirty','● 编辑模式：修改后点击「保存并生成三联单」将覆盖原单据'+(rec.type?'':'（注意：该单据的经费性质尚未标注，保存前需选择）'));
@@ -939,6 +993,1275 @@ function renderXlPrev(){
   };
 }
 
+/* ================= 发票识别（v1.10.0 新增 / v1.11.0 增强；全部本机解析，不影响原有功能） =================
+   分层：PDF 内嵌 XML → PDF 文本层 → 本地 OCR(tesseract.js)；图片直接 OCR。
+   v1.11.0：① 修 PSM（原 PSM3 会丢列）② 二维码交叉校验 ③ 逐字切分的表头识别 ④ 税额/合计算术自校验 */
+const INV_MAX_EDGE=2600,INV_LOW_CONF=55;
+let invBatches=null,invMode='merge',invQueue=[],invIdx=0;
+
+/* ---- 外部依赖懒加载（首次用到才下载；纯 XML 用户零负担） ---- */
+const PDFJS_VER='3.11.174',PDFJS_BASE='https://cdn.jsdelivr.net/npm/pdfjs-dist@'+PDFJS_VER+'/build/';
+let _pdfjsP=null,_pdfjsFail=false;
+function ensurePdfJs(){
+  if(window.pdfjsLib)return Promise.resolve(window.pdfjsLib);
+  if(_pdfjsFail)return Promise.reject(new Error('PDF 组件加载失败（首次使用需联网）'));
+  if(_pdfjsP)return _pdfjsP;
+  _pdfjsP=new Promise((res,rej)=>{
+    const s=document.createElement('script');
+    s.src=PDFJS_BASE+'pdf.min.js';
+    s.onload=()=>{
+      if(!window.pdfjsLib){_pdfjsFail=true;return rej(new Error('PDF 组件加载失败'))}
+      try{window.pdfjsLib.GlobalWorkerOptions.workerSrc=PDFJS_BASE+'pdf.worker.min.js'}catch(e){}
+      res(window.pdfjsLib);
+    };
+    s.onerror=()=>{_pdfjsFail=true;rej(new Error('PDF 组件未加载（首次使用需联网）'))};
+    document.head.appendChild(s);
+  });
+  return _pdfjsP;
+}
+const TESS_VER='5.1.1',TESS_BASE='https://cdn.jsdelivr.net/npm/tesseract.js@'+TESS_VER+'/dist/';
+let _tessP=null,_tessFail=false,_ocrWorker=null,_ocrWorkerP=null;
+function ensureTesseract(){
+  if(window.Tesseract)return Promise.resolve(window.Tesseract);
+  if(_tessFail)return Promise.reject(new Error('OCR 组件加载失败（首次使用需联网）'));
+  if(_tessP)return _tessP;
+  _tessP=new Promise((res,rej)=>{
+    const s=document.createElement('script');
+    s.src=TESS_BASE+'tesseract.min.js';
+    s.onload=()=>{window.Tesseract?res(window.Tesseract):(_tessFail=true,rej(new Error('OCR 组件加载失败')))};
+    s.onerror=()=>{_tessFail=true;rej(new Error('OCR 组件未加载（首次使用需联网）'))};
+    document.head.appendChild(s);
+  });
+  return _tessP;
+}
+/* ---- 二维码（纯本地解码，用于交叉校验发票号码 / 开票日期 / 价税合计） ---- */
+const JQR_VER='1.4.0',JQR_BASE='https://cdn.jsdelivr.net/npm/jsqr@'+JQR_VER+'/dist/';
+let _jsqrP=null,_jsqrFail=false;
+function ensureJsQR(){
+  if(window.jsQR)return Promise.resolve(window.jsQR);
+  if(_jsqrFail)return Promise.reject(new Error('二维码组件加载失败（首次使用需联网）'));
+  if(_jsqrP)return _jsqrP;
+  _jsqrP=new Promise((res,rej)=>{
+    const s=document.createElement('script');
+    s.src=JQR_BASE+'jsQR.js';
+    s.onload=()=>{window.jsQR?res(window.jsQR):(_jsqrFail=true,rej(new Error('二维码组件加载失败')))};
+    s.onerror=()=>{_jsqrFail=true;rej(new Error('二维码组件未加载（首次使用需联网）'))};
+    document.head.appendChild(s);
+  });
+  return _jsqrP;
+}
+/* 数电票二维码内容形如：01,32,,{20位发票号码},{价税合计},{YYYYMMDD},,{校验码}
+   老式电子普票为：01,10,{发票代码},{发票号码},{不含税金额},{YYYYMMDD},{校验码},... */
+function parseInvoiceQR(str){
+  const p=String(str||'').split(',');
+  if(p.length<3||!/^\d{2}$/.test(p[0].trim()))return null;
+  const out={kindNo:p[1]&&p[1].trim(),invoiceCode:'',invoiceNo:'',issueDate:'',totalIncTax:null,
+    totalExTax:null,checkCode:''};
+  p.forEach(v=>{
+    const t=String(v||'').trim();if(!t)return;
+    if(/^\d{20}$/.test(t)&&!out.invoiceNo)out.invoiceNo=t;
+    else if(/^\d{12}$/.test(t)&&!out.invoiceCode)out.invoiceCode=t;
+    else if(/^20\d{6}$/.test(t)&&!out.issueDate)out.issueDate=t.slice(0,4)+'-'+t.slice(4,6)+'-'+t.slice(6,8);
+    else if(/^\d+\.\d{1,2}$/.test(t)){
+      if(p[1]&&/^(31|32)$/.test(p[1].trim())){if(out.totalIncTax==null)out.totalIncTax=parseFloat(t)}
+      else if(out.totalExTax==null)out.totalExTax=parseFloat(t);
+    }
+    else if(/^[0-9A-Za-z]{4,}$/.test(t)&&!/^\d+$/.test(t)&&!out.checkCode)out.checkCode=t;
+  });
+  return out.invoiceNo?out:null;
+}
+function canvasScaleRegion(cv,rx0,ry0,rx1,ry1,z){
+  const w=Math.max(1,Math.round(cv.width*(rx1-rx0))),h=Math.max(1,Math.round(cv.height*(ry1-ry0)));
+  const out=document.createElement('canvas');out.width=w*z;out.height=h*z;
+  const ctx=out.getContext('2d');
+  ctx.imageSmoothingEnabled=true;
+  ctx.drawImage(cv,Math.round(cv.width*rx0),Math.round(cv.height*ry0),w,h,0,0,w*z,h*z);
+  return out;
+}
+/* 全图解不出时裁左上角再解（发票二维码固定在左上，裁切可显著提升成功率） */
+async function readInvoiceQR(cv){
+  try{
+    const jsQR=await ensureJsQR();
+    const tries=[['全图',[0,0,1,1,1]],['左上',[0,0,0.38,0.38,1]],['左上2x',[0,0,0.38,0.38,2]],['左上3x',[0,0,0.38,0.38,3]]];
+    for(const [tag,cfg] of tries){
+      const sub=canvasScaleRegion(cv,cfg[0],cfg[1],cfg[2],cfg[3],cfg[4]);
+      const ctx=sub.getContext('2d');
+      const img=ctx.getImageData(0,0,sub.width,sub.height);
+      let r=null;
+      try{r=jsQR(img.data,img.width,img.height,{inversionAttempts:'attemptBoth'})}catch(e){}
+      if(r&&r.data){const q=parseInvoiceQR(r.data);if(q){q.how=tag;return q}}
+    }
+  }catch(e){console.warn('[QR]',e&&e.message)}
+  return null;
+}
+
+/* OCR worker 全局复用一次（避免每张都重新下载模型） */
+async function getOcrWorker(){
+  if(_ocrWorker)return _ocrWorker;
+  if(_ocrWorkerP)return _ocrWorkerP;
+  const T=await ensureTesseract();
+  _ocrWorkerP=T.createWorker('chi_sim+eng',1,{
+    workerPath:TESS_BASE+'worker.min.js',
+    logger:m=>{if(m&&m.status==='recognizing text')setInvProgress(Math.round((m.progress||0)*100))},
+    errorHandler:e=>console.warn('[OCR]',e)
+  }).then(w=>{_ocrWorker=w;_ocrWorkerP=null;return w});
+  return _ocrWorkerP;
+}
+/* PSM 6「统一文本块」是账票识别的关键：默认的 PSM 3 会把整张表切错，甚至整列丢失。
+   preserve_interword_spaces 保留词间空格，避免相邻两列的数字被粘成一个数。 */
+async function ocrRecognize(cv,psm){
+  const w=await getOcrWorker();
+  const params={tessedit_pageseg_mode:String(psm||6),preserve_interword_spaces:'1'};
+  try{await w.setParameters(params)}catch(e){}
+  const out=await w.recognize(cv,params,{text:true,tsv:true,blocks:true});
+  return(out&&out.data)?out.data:{};
+}
+function setInvProgress(pct){
+  const box=$('#invProg');if(!box)return;
+  const on=(pct!=null);
+  box.classList.toggle('hidden',!on);
+  box.querySelector('i').style.width=(on?pct:0)+'%';
+}
+
+/* ---- 通用小工具 ---- */
+/* 数电票明细名形如 *类别*品名（类别尾部多是「…品 / …材 / …料」）。
+   OCR 常把两个「*」分别读成 ] k # 4 等，故不能只做字面替换，要按「类别词尾 + 星号位」识别剥离。 */
+const INV_CAT_TAIL=/[品材料具件纸布剂器械备物食药油漆线管板型]$/;
+function cleanItemName(s){
+  let t=String(s||'').replace(/^[\s\]\[|丨!！·•,，.。'"`~^*＃#]+/,'');
+  const m=t.match(/^[^\s]{0,2}[\u4e00-\u9fa5]{2,8}[*＊#＃4４xX×]/);
+  if(m){
+    const pre=m[0].replace(/[*＊#＃4４xX×][\s\S]*$/,'');
+    if(m[0].length<=10&&INV_CAT_TAIL.test(pre))t=t.slice(m[0].length);
+  }
+  return t.replace(/^\*[^*]*\*/,'').replace(/^[＊*]+/,'').trim();
+}
+/* 规格里的分隔符「*」极容易被 OCR 认错：70*70*40 → 70%70%40 / 50*100 → 50#100，
+   更糟时连字符数都会变（55*55*20 → 554554#20，两个 * 被读成 4 和一个 #）。
+   下面只在「整串由数字 + 分隔符组成」的形态内还原，绝不碰带字母/汉字的规格
+   （如 300MM中齿、40*40cm），避免把型号改坏。 */
+const SPEC_SEP=/[%*×xX#＃]/;
+function normSpec(s){
+  let t=String(s==null?'':s).trim();
+  if(!t)return t;
+  /* 只处理「整串由数字 + 分隔符组成」的形态；带字母/汉字的规格（300MM中齿、40*40cm）一律不动 */
+  if(!SPEC_SEP.test(t))return t;
+  if(!/^[\d%*×xX#＃]+$/.test(t))return t;
+  const parts=[];let cur='',usedFake=false;
+  for(let i=0;i<t.length;i++){
+    const ch=t[i],prev=t[i-1];
+    /* 紧跟在数字后面的 4 很可能是 * 被误读（55*55*20 → 554554#20）；
+       串首的 4、或前面已是分隔符的 4 一律当数字保留（否则 40*4*400 会被改坏） */
+    const fake=(ch==='4')&&/[0-9]/.test(prev||'');
+    if(fake)usedFake=true;
+    if(/[0-9]/.test(ch)&&!fake)cur+=ch;
+    else{parts.push(cur);cur=''}
+  }
+  parts.push(cur);
+  const grp=parts.filter(v=>v.length);
+  if(!grp.length||grp.length>4)return t;
+  if(!grp.every(v=>v.length<=3))return t;
+  /* 只按显式分隔符切开时（50#100、70%70%40）2 组也接受；
+     但用「4 冒充分隔符」推断出来的结果风险更高，要求至少 3 组才算成功，
+     否则 1204*30 会被误判成 120*30。 */
+  if(grp.length<(usedFake?3:2))return t;
+  return grp.join('*');
+}
+/* 计量单位极易被认错（个→占、件→牛、块→玦…）。只归一「明确是错字」的单字，
+   其余保持原样交给人工在复核面板上确认，不做无根据的猜测。 */
+const UNIT_FIX={'占':'个','伀':'个','仄':'个','令':'个','亻':'个','亇':'个','仝':'个',
+  '玦':'块','扶':'块','快':'块','杷':'把','芰':'支','只':'只','兄':'只',
+  '牛':'件','伴':'件','併':'件','叚':'段','殳':'段','缎':'段','查':'套','叁':'套',
+  '葙':'箱','贷':'袋','未':'米','末':'米','长':'张','厅':'斤','攻':'枚','杖':'根'};
+function normUnit(v){
+  let t=String(v==null?'':v).trim().replace(/[\s\u3000·・._]+/g,'');
+  if(!t)return'';
+  if(t.length===1&&UNIT_FIX[t])return UNIT_FIX[t];
+  return t;
+}
+/* 「名称：」这个标签本身常被读成「者称/名称/名你」并与企业名粘成一串
+   （者称i江松颤贸易有限公司）。只削掉这几个已知的标签乱码，不做广义猜测，
+   以免把「方正科技…」这类以标签字开头的企业名误伤。 */
+function cleanPartyName(v){
+  let t=String(v==null?'':v).trim();
+  const m=t.match(/^(?:者称|名称|名你|名狲|名狞|吊秘|秘)[iIl丨|]?[：:]?/);
+  if(m&&t.length-m[0].length>=5)t=t.slice(m[0].length);
+  return t.replace(/^[：:·・,，。\s]+/,'').trim();
+}
+function normRate(v){
+  if(v==null||v==='')return null;
+  const t=String(v);
+  if(/免|不征|零/.test(t))return 0;
+  let n=num(t.replace(/%/g,''));
+  if(n==null)return null;
+  if(/%/.test(t)||n>1)n=n/100;
+  return r2(n*10000)/10000;
+}
+function invKindName(k){return{'xml':'数电票 XML','pdf-xml':'PDF·内嵌XML','pdf-text':'PDF·文本层','pdf-ocr':'扫描件·OCR','img-ocr':'图片·OCR'}[k]||(k||'')}
+function loadImage(file){
+  return new Promise((res,rej)=>{
+    const url=URL.createObjectURL(file),img=new Image();
+    img.onload=()=>{res(img);setTimeout(()=>URL.revokeObjectURL(url),2000)};
+    img.onerror=()=>{URL.revokeObjectURL(url);rej(new Error('图片读取失败'))};
+    img.src=url;
+  });
+}
+function fitCanvas(src,maxEdge){
+  const w0=src.naturalWidth||src.width,h0=src.naturalHeight||src.height;
+  const s=Math.min(1,maxEdge/Math.max(w0,h0));
+  if(s>=1&&typeof src.getContext==='function')return src;
+  const cv=document.createElement('canvas');
+  cv.width=Math.max(1,Math.round(w0*s));cv.height=Math.max(1,Math.round(h0*s));
+  cv.getContext('2d').drawImage(src,0,0,cv.width,cv.height);
+  return cv;
+}
+function preprocessCanvas(cv){
+  const ctx=cv.getContext('2d');
+  let img;try{img=ctx.getImageData(0,0,cv.width,cv.height)}catch(e){return cv}
+  const d=img.data;
+  for(let i=0;i<d.length;i+=4){
+    const g=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];
+    const v=g<115?0:(g>175?255:(g-115)*255/60);
+    d[i]=d[i+1]=d[i+2]=v;
+  }
+  ctx.putImageData(img,0,0);
+  return cv;
+}
+
+/* ---- 统一「文本行」结构 {y, words:[{text,x,w,conf}]}：PDF 文本层与 OCR 共用 ---- */
+function clusterLineWords(items,tol){
+  const lines=[];
+  items.slice().sort((a,b)=>b.y-a.y||a.x-b.x).forEach(it=>{
+    let ln=lines.find(L=>Math.abs(L.y-it.y)<=tol);
+    if(!ln){ln={y:it.y,words:[]};lines.push(ln)}
+    ln.words.push(it);
+  });
+  lines.forEach(L=>L.words.sort((a,b)=>a.x-b.x));
+  return lines;
+}
+function joinWords(words){
+  let s='',prev=null;
+  words.forEach(w=>{
+    if(prev){
+      const gap=w.x-(prev.x+(prev.w||0));
+      s+=(gap>(prev.w||8)*0.6?'  ':gap>1?' ':'');
+    }
+    s+=w.text;prev=w;
+  });
+  return s.replace(/[ \t]+/g,' ').trim();
+}
+async function pdfWordLines(pdf){
+  const out=[];
+  for(let p=1;p<=pdf.numPages;p++){
+    const page=await pdf.getPage(p);
+    const tc=await page.getTextContent();
+    const items=[];
+    (tc.items||[]).forEach(it=>{
+      if(!it.str||!it.str.trim())return;
+      const m=it.transform||[1,0,0,1,0,0];
+      items.push({text:it.str,x:m[4],y:m[5],w:it.width||0,conf:null});
+    });
+    out.push(...clusterLineWords(items,3));
+    if(page.cleanup)page.cleanup();
+  }
+  return out;
+}
+/* 直接采用 tesseract 已经算好的 block/paragraph/line 结构来分行：
+   按 y 距离聚类很不可靠（同一视觉行的词 top 可相差十几像素，会把一行拆成好几段），
+   曾经导致整张票被拆碎、列全部错位。 */
+function tsvToLines(tsv){
+  const groups={},order=[];
+  String(tsv||'').split(/\r?\n/).slice(1).forEach(row=>{
+    const c=row.split('\t');
+    if(c.length<12)return;
+    if(+c[0]!==5)return;                      /* level 5 = 词 */
+    const text=(c[11]||'').trim();if(!text)return;
+    const key=c[2]+'.'+c[3]+'.'+c[4];
+    let g=groups[key];
+    if(!g){g=groups[key]={ys:[],words:[]};order.push(key)}
+    const x=parseFloat(c[6])||0,top=parseFloat(c[7])||0;
+    const w=parseFloat(c[8])||0,h=parseFloat(c[9])||0;
+    let conf=parseFloat(c[10]);if(isNaN(conf))conf=0;
+    g.ys.push(top+h/2);
+    g.words.push({text:text,x:x,w:w,conf:conf});
+  });
+  const lines=order.map(k=>{
+    const g=groups[k];
+    g.words.sort((a,b)=>a.x-b.x);
+    return{y:g.ys.reduce((a,b)=>a+b,0)/g.ys.length,words:g.words};
+  });
+  lines.sort((a,b)=>a.y-b.y);
+  return lines;
+}
+
+/* ---- 数电票 / 电子发票 XML ---- */
+const XML_ALIAS={
+  invoiceNo:['invoicenumber','invoiceno'],
+  invoiceCode:['invoicecode'],
+  issueTime:['issuetime','issuedate','invoicedate','billingdate'],
+  invoiceKind:['invoicetype','invoicekind','invoicetypename','specificbusiness'],
+  totalExTax:['totalamwithouttax','totalamountwithouttax','totalamount','amounttotal','taxexclusivetotalamount','taxexclusiveamount'],
+  totalTax:['totaltaxam','totaltaxamount','taxtotalamount','taxamounttotal'],
+  totalIncTax:['totaltaxincludedamount','amountwithtax','totalamountincludedtax','taxinclusivetotalamount'],
+  buyerName:['buyername','purchasername'],
+  buyerTaxNo:['buyertaxid','buyeridnum','buyertaxno','buyersocialcreditcode'],
+  sellerName:['sellername','salername'],
+  sellerTaxNo:['sellertaxid','selleridnum','sellertaxno','sellersocialcreditcode'],
+  items:['issuiteminformation','issuiteminfo','iteminformation','invoiceitem','goodsdetail','itemlist'],
+  itemName:['itemname','goodsname','productname'],
+  itemSpec:['specificationmod','specificationmodel','specification','spec','specmod'],
+  itemUnit:['measurementdimension','measurementunit','meaunits','unit'],
+  itemQty:['quantity','qty'],
+  itemUnPrice:['unprice','unitprice','price'],
+  itemAmount:['amount','amountwithouttax','taxexclusiveamount'],
+  itemTaxRate:['taxrate','rate'],
+  itemTaxAmt:['comtaxam','taxamount','taxpayable','tax'],
+  itemIncTax:['totaltaxincludedamount','amountwithtax','taxinclusiveamount','taxincludedamount']
+};
+const _invN=s=>String(s||'').replace(/^.*:/,'').toLowerCase().replace(/[^a-z0-9]/g,'');
+function _els(root){return root?[...root.getElementsByTagName('*')]:[]}
+function _contains(parent,node){
+  if(!parent||!node)return false;
+  if(typeof parent.contains==='function')return parent.contains(node);
+  let p=node.parentNode;
+  while(p){if(p===parent)return true;p=p.parentNode}
+  return false;
+}
+function _pickText(root,aliases,exclude){
+  const A=aliases.map(_invN).filter(Boolean);if(!A.length)return'';
+  for(const el of _els(root)){
+    if(exclude&&exclude.length&&exclude.some(x=>x!==el&&_contains(x,el)))continue;
+    const n=_invN(el.localName||el.nodeName);
+    if(n&&A.includes(n)){const v=(el.textContent||'').trim();if(v)return v}
+  }
+  return '';
+}
+function _pickBlocks(root,aliases){
+  const A=aliases.map(_invN).filter(Boolean);if(!A.length)return[];
+  return _els(root).filter(el=>{
+    const n=_invN(el.localName||el.nodeName);
+    if(!n||!A.includes(n))return false;
+    return !_els(el).some(c=>{const cn=_invN(c.localName||c.nodeName);return cn&&A.includes(cn)});
+  });
+}
+function parseInvoiceXMLText(xmlText,file){
+  const txt=String(xmlText||'');
+  const doc=new DOMParser().parseFromString(txt,'application/xml');
+  if(doc.getElementsByTagName('parsererror').length)throw new Error('XML 格式不正确');
+  const root=doc.documentElement;
+  if(!root||!/invoice|发票|价税合计|taxincluded/i.test(txt))throw new Error('未识别为发票 XML');
+  const blocks=_pickBlocks(root,XML_ALIAS.items);
+  const itemNodes=blocks.length?blocks:[root];
+  const items=itemNodes.map(b=>({
+    name:cleanItemName(_pickText(b,XML_ALIAS.itemName)),
+    spec:_pickText(b,XML_ALIAS.itemSpec),
+    unit:_pickText(b,XML_ALIAS.itemUnit),
+    qty:num(_pickText(b,XML_ALIAS.itemQty)),
+    priceExTax:num(_pickText(b,XML_ALIAS.itemUnPrice)),
+    amountExTax:num(_pickText(b,XML_ALIAS.itemAmount)),
+    taxRate:normRate(_pickText(b,XML_ALIAS.itemTaxRate)),
+    taxAmount:num(_pickText(b,XML_ALIAS.itemTaxAmt)),
+    amountIncTax:num(_pickText(b,XML_ALIAS.itemIncTax))
+  })).filter(it=>it.name||it.amountExTax!=null||it.amountIncTax!=null);
+  const meta={
+    invoiceNo:_pickText(root,XML_ALIAS.invoiceNo,blocks),
+    invoiceCode:_pickText(root,XML_ALIAS.invoiceCode,blocks),
+    invoiceKind:_pickText(root,XML_ALIAS.invoiceKind,blocks),
+    issueDate:normDateStr(_pickText(root,XML_ALIAS.issueTime,blocks)),
+    buyer:{name:_pickText(root,XML_ALIAS.buyerName,blocks),taxNo:_pickText(root,XML_ALIAS.buyerTaxNo,blocks)},
+    seller:{name:_pickText(root,XML_ALIAS.sellerName,blocks),taxNo:_pickText(root,XML_ALIAS.sellerTaxNo,blocks)},
+    totalExTax:num(_pickText(root,XML_ALIAS.totalExTax,blocks)),
+    totalTax:num(_pickText(root,XML_ALIAS.totalTax,blocks)),
+    totalIncTax:num(_pickText(root,XML_ALIAS.totalIncTax,blocks))
+  };
+  const inv=buildInvoice(meta,items,file,'xml');
+  if(!inv.items.length)throw new Error('未解析出发票明细');
+  return inv;
+}
+
+/* ---- 文本 / OCR 共用的票面解析 ---- */
+/* OCR 输出里「发 票 号 码」「纳 税 人 识 别 号」常被空格/tesseract 切字打断，
+   因此所有关键词匹配统一跑在「去空白」文本上（flat），不再依赖原排版。 */
+function extractMetaFromText(raw){
+  const flat=stripWs(raw);
+  const pick=re=>{const m=flat.match(re);return m?String(m[1]).trim():''};
+  const pickAll=(re,limit)=>{
+    const out=[];let m;const g=new RegExp(re.source,'g');
+    /* 有的正则整体匹配即所需（无捕获组），此时退回 m[0]，否则会得到字符串 "undefined" */
+    while((m=g.exec(flat))&&out.length<(limit||4))out.push(String(m[1]!=null?m[1]:m[0]).trim());
+    return out;
+  };
+  /* 购销方名称：优先按「企业/单位后缀」抓取——票面「购买方信息 / 销售方信息」是竖排小字，
+     OCR 经常读成乱码，依赖这些标签反而取不到名字。 */
+  let names=pickAll(/[\u4e00-\u9fa5A-Za-z0-9]{4,30}?(?:有限责任公司|股份有限公司|有限公司|公司|大学|学院|学校|医院|银行|支行|分行|商行|经营部|服务部|门市部|合作社|超市|中心|酒店|宾馆|药店|批发部|五金店|工厂|商店|厂|店|社|所|部)/g,6);
+  if(names.length<2){
+    names=pickAll(/名称[：:]?(.{2,40}?)(?=统一社会信用代码|纳税人识别|销售方|购买方|开户|地址|电话|$)/,4)
+      .filter(v=>v&&v.length>=2&&/[\u4e00-\u9fa5]/.test(v));
+  }
+  const taxNos=pickAll(/纳税人识别[号导寻]?[：:]?([0-9A-Za-z]{15,20})/,4).map(s=>s.toUpperCase());
+  /* 发票号码标签被读成乱码时（炎丘寺醋:2633…），退而求其次：票面顶部第一串 20 位数字。
+     数电票号码固定 20 位；银行账号也是 20 位但印在票面底部，故只在开头一小段里找。 */
+  const headFlat=flat.slice(0,220);
+  const noFallback=(headFlat.match(/(\d{20})/)||[])[1]||'';
+  /* 开票日期被读成「开桑日期」甚至把年月日整成乱码时，取该字段里前 8 位数字按 YYYYMMDD 解读 */
+  const dateRaw=pick(/开[^\s]{0,3}日[期朝][：:]?([^\s]{6,26})/);
+  return {
+    invoiceNo:pick(/(?:发票号码|发票号|号码)[：:]?([0-9]{8,25})/)||noFallback,
+    invoiceCode:pick(/(?:发票代码|代码)[：:]?([0-9]{10,14})/),
+    invoiceKind:pick(/(电子发票[（(][^）)]{2,12}[）)]|增值税电子[^\s]{0,10}发票|数电票)/),
+    /* 「开票日期」常被识别成「开桑日期 / 开科日期」等，放宽中间一两个字 */
+    issueDate:normDateStr(pick(/开[^\s]{0,2}日[期朝][：:]?(\d{4}年\d{1,2}月\d{1,2}日)/)||
+                         pick(/开[^\s]{0,2}日[期朝][：:]?(\d{4}[-/.]\d{1,2}[-/.]\d{1,2})/))||
+              isoFromDigits(dateRaw),
+    buyer:{name:cleanPartyName(names[0])||'',taxNo:taxNos[0]||''},
+    seller:{name:cleanPartyName(names[1])||'',taxNo:taxNos[1]||''},
+    totalExTax:null,
+    totalTax:null,
+    totalIncTax:num(pick(/价税合计[\s\S]{0,42}?[¥￥]?([\d,]+\.\d{2})/)||
+                   pick(/小写[^\d]{0,8}[¥￥]?([\d,]+\.\d{2})/))
+  };
+}
+/* 「2026年06月25日」被读成「20264£06 5 25H」时，年月日已不可信，
+   但前 8 位数字仍是 20260625，故按 YYYYMMDD 取前 8 位并做真实日期校验。 */
+function isoFromDigits(v){
+  const d=String(v||'').replace(/\D/g,'');
+  if(d.length<8)return'';
+  const y=+d.slice(0,4),m=+d.slice(4,6),dd=+d.slice(6,8);
+  if(y<2000||y>2099||m<1||m>12||dd<1||dd>31)return'';
+  const t=new Date(y,m-1,dd);
+  if(t.getFullYear()!==y||t.getMonth()+1!==m||t.getDate()!==dd)return'';
+  return y+'-'+String(m).padStart(2,'0')+'-'+String(dd).padStart(2,'0');
+}
+/* OCR 常把表头（项目名称/数量/单价…）逐字切开，甚至把「数 量」读成两个字词，
+   所以先按 x 把整行拼成"去空白"字符串并记录每个字对应的 x，再用关键词定位列。 */
+function flatLine(line){
+  const chars=[],map=[];
+  (line.words||[]).slice().sort((a,b)=>a.x-b.x).forEach(w=>{
+    const t=String(w.text||''),n=t.length;
+    for(let i=0;i<n;i++){
+      const ch=t[i];
+      /* 空白与下划线/竖线等排版噪声一律忽略，否则「单 价」「单_价」都匹配不上「单价」 */
+      if(/[\s\u3000_·・—－|丨∣]/.test(ch))continue;
+      chars.push(ch);
+      map.push(w.x+(n>1?(w.w||0)*i/n:0));
+    }
+  });
+  return{text:chars.join(''),map:map};
+}
+function stripWs(s){return String(s||'').replace(/[\s\u3000]+/g,'')}
+/* 表头个别字会被 OCR 认错（金额→金领、税额→税颚、数量→数里），故每个列名都留容错别名 */
+const HEAD_ORDER=['name','spec','unit','qty','price','amount','rate','tax'];
+const HEAD_ALIAS=[
+  ['name',['项目名称','货物或应税劳务名称','货物或应税劳务','货物名称','劳务名称','品名','项目']],
+  ['spec',['规格型号','规格','型号']],
+  ['unit',['单位','单伉']],
+  ['qty',['数量','数里','数最','数董']],
+  ['price',['单价','单份','单介']],
+  ['amount',['金额','金领','金颏','金頧','全额']],
+  ['rate',['税率/征收率','税率','征收率','税率/征收章']],
+  ['tax',['税额','税颚','税题','税頻','税頟']]
+];
+function headerColumns(line,flat){
+  const f=flat||flatLine(line);
+  if(!f.text)return null;
+  const found=[];
+  HEAD_ALIAS.forEach(pair=>{
+    let best=null;
+    pair[1].forEach(kw=>{
+      const i=f.text.indexOf(kw);
+      if(i>=0&&(!best||i<best.i))best={i:i,len:kw.length};
+    });
+    if(!best)return;
+    const a=f.map[best.i],b=f.map[Math.min(best.i+best.len-1,f.map.length-1)];
+    if(a==null)return;
+    const x1=(b==null?a:b)+1;
+    found.push({key:pair[0],x0:a,x1:x1,cx:(a+x1)/2,approx:false});
+  });
+  if(!found.length)return null;
+  /* 缺列按「数电票固定列序」在相邻已知列之间线性插值补位，避免整列错位 */
+  const known={};found.forEach(c=>{known[c.key]=c});
+  const oi=k=>HEAD_ORDER.indexOf(k);
+  const ks=found.map(c=>oi(c.key)).sort((a,b)=>a-b);
+  const span=ks.length>1?(Math.max.apply(null,found.map(c=>c.cx))-Math.min.apply(null,found.map(c=>c.cx)))/(ks[ks.length-1]-ks[0]):130;
+  const gap=isFinite(span)&&span>20?span:130;
+  HEAD_ORDER.forEach((key,i)=>{
+    if(known[key])return;
+    let p=null,n=null;
+    for(let k=i-1;k>=0;k--){if(known[HEAD_ORDER[k]]){p={o:k,c:known[HEAD_ORDER[k]]};break}}
+    for(let k=i+1;k<HEAD_ORDER.length;k++){if(known[HEAD_ORDER[k]]){n={o:k,c:known[HEAD_ORDER[k]]};break}}
+    let cx=null;
+    if(p&&n)cx=p.c.cx+(n.c.cx-p.c.cx)*(i-p.o)/(n.o-p.o);
+    else if(p)cx=p.c.cx+gap*(i-p.o);
+    else if(n)cx=n.c.cx-gap*(n.o-i);
+    if(cx==null)return;
+    known[key]={key:key,x0:cx,x1:cx+1,cx:cx,approx:true};
+    found.push(known[key]);
+  });
+  found.sort((a,b)=>a.cx-b.cx);
+  /* 相邻两列的边界取二者列心中点；最外侧向外放开 */
+  found.forEach((c,i)=>{
+    c.bl=i===0?-Infinity:(found[i-1].cx+c.cx)/2;
+    c.br=i===found.length-1?Infinity:(c.cx+found[i+1].cx)/2;
+  });
+  return found;
+}
+/* 按列带把一整行切成 {列名: 文本}。折行续行判定与明细行解析都要用到，故单独抽出。 */
+function cellsOfLine(line,cols){
+  const cells={};
+  const c0=cols&&cols.length?cols[0]:null;
+  (line.words||[]).slice().sort((a,b)=>a.x-b.x).forEach((w,idx)=>{
+    const mid=w.x+(w.w||0)/2;
+    let best=null;
+    cols.forEach(c=>{if(mid>=c.bl&&mid<c.br)best=c});
+    if(!best){
+      let bd=Infinity;
+      cols.forEach(c=>{const d=Math.abs(mid-c.cx);if(d<bd){bd=d;best=c}});
+    }
+    if(!best)return;
+    /* 未识别到「序号」列时，最左侧的孤立行号直接丢弃，避免并进名称 */
+    if(idx===0&&/^\d{1,3}$/.test(w.text)&&c0&&mid<(c0.x0||0))return;
+    cells[best.key]=(cells[best.key]||'')+w.text;
+  });
+  return cells;
+}
+function rowByColumns(line,cols){
+  return cellsToItem(cellsOfLine(line,cols));
+}
+/* 规格/名称在票面上折行时，续行整行没有任何数字。此时把它并回上一条明细，
+   否则「折叠款白色两件 / 套」这样被拆开的两行会丢掉半截。
+   中英文交界处补一个空格，中文之间直接相连（与票面排版一致）。 */
+function joinWrapped(a,b){
+  a=String(a||'').trim();b=String(b||'').trim();
+  if(!a)return b;if(!b)return a;
+  /* 交界两侧「一边是英数、一边是汉字」时补空格（cm|纬编澜），同文种直接相连（两件|套） */
+  const sp=/[A-Za-z0-9]$/.test(a)!==/^[A-Za-z0-9]/.test(b);
+  return a+(sp?' ':'')+b;
+}
+function rowByTokens(line){
+  const toks=(line.words||[]).map(w=>w.text).filter(Boolean);
+  if(!toks.length)return null;
+  const isNumTok=t=>/^[¥￥]?\s*[\d,]+(\.\d+)?%?$/.test(t);
+  let i=toks.length-1;
+  while(i>=0&&isNumTok(toks[i]))i--;
+  const nameToks=toks.slice(0,i+1),nums=toks.slice(i+1);
+  if(!nums.length)return null;
+  const p=v=>num(String(v).replace(/%/g,''));
+  const n=nums.length;
+  let qty=null,price=null,amt=null,rate=null,tax=null;
+  if(n>=5){tax=p(nums[n-1]);rate=normRate(nums[n-2]);amt=p(nums[n-3]);price=p(nums[n-4]);qty=p(nums[n-5])}
+  else if(n===4){tax=p(nums[3]);rate=normRate(nums[2]);amt=p(nums[1]);price=p(nums[0])}
+  else if(n===3){amt=p(nums[2]);price=p(nums[1]);qty=p(nums[0])}
+  else if(n===2){price=p(nums[1]);qty=p(nums[0])}
+  else{amt=p(nums[0])}
+  const name=cleanItemName(nameToks.join(' '));
+  if(!name&&amt==null)return null;
+  return{name:name,spec:'',unit:'',qty:qty,priceExTax:price,amountExTax:amt,taxRate:rate,taxAmount:tax,amountIncTax:null};
+}
+function cellsToItem(c){
+  if(!c)return null;
+  const name=cleanItemName(c.name);
+  const amt=num(c.amount),price=num(c.price);
+  if(!name&&amt==null&&price==null)return null;
+  return{name:name,spec:normSpec(c.spec),unit:normUnit(c.unit),
+    qty:num(c.qty),priceExTax:price,amountExTax:amt,taxRate:normRate(c.rate),taxAmount:num(c.tax),amountIncTax:null};
+}
+/* 判断一行是否「像明细行」：≥3 个数字词，且至少含一个两位小数（金额）。
+   开票日期行也有 3 个数字（2026/07/08），用两位小数才能把它排除。 */
+function numTokenStats(line){
+  let n=0,dec=0;
+  mergeNumberFragments(line).forEach(w=>{
+    const t=String(w.text).trim();
+    if(/^[¥￥]?\d[\d,]*(\.\d+)?%?$/.test(t)){n++;if(/\.\d{2}$/.test(t))dec++}
+  });
+  return{n:n,dec:dec};
+}
+function isItemLine(line){const s=numTokenStats(line);return s.n>=3&&s.dec>=1}
+/* 从「合 计」行取票面不含税合计 / 税额合计，用于逐行校验。
+   注意：tesseract 可能把「合计」读成「合it」甚至「后 it」，且金额会被拆成 "¥5891."+"09"，
+   因此这里按列聚合整格文本后再解析，并用「第一处出现 ¥ 的行」作结构兜底
+   （明细行不印 ¥，所以带 ¥ 的那一行就是合计行）。 */
+function totalsFromRows(rows,cols,headIdx,sumIdx){
+  const out={exTax:null,tax:null,incTax:null};
+  if(!rows||!rows.length)return out;
+  let hi=-1;
+  for(let i=(headIdx>=0?headIdx+1:0);i<rows.length;i++){
+    const t=rows[i].flat.text;
+    if(/^合/.test(t)&&!/价税/.test(t)){hi=i;break}
+  }
+  if(hi<0&&sumIdx>=0&&rows[sumIdx]&&/[¥￥]/.test(rows[sumIdx].flat.text))hi=sumIdx;
+  if(hi>=0&&cols){
+    for(let i=hi;i<Math.min(rows.length,hi+3);i++){
+      const cells={};
+      mergeNumberFragments(rows[i].line).forEach(w=>{
+        const cx=w.x+(w.w||0)/2;
+        let c=null;
+        cols.forEach(k=>{if(cx>=k.bl&&cx<k.br)c=k});
+        if(c)cells[c.key]=(cells[c.key]||'')+w.text;
+      });
+      /* 金额一定是两位小数；只读到一位小数（¥95.0）或没有小数点的（9L6）
+         都是被截断/读错的，宁可留空也不要填个错数去触发假告警 */
+      if(out.exTax==null&&/\.\d{2}$/.test(cells.amount||'')){const v=num(cells.amount);if(v!=null)out.exTax=r2(v)}
+      if(out.tax==null&&/\.\d{2}$/.test(cells.tax||'')){const v=num(cells.tax);if(v!=null)out.tax=r2(v)}
+      if(out.exTax!=null&&out.tax!=null)break;
+    }
+  }
+  /* 票面价税合计（小写）：取「大写/小写」区块中以金额结尾的那一行 */
+  for(let i=hi>=0?hi:0;i<rows.length;i++){
+    const t=rows[i].flat.text;
+    if(!/[\d,]{2,}\.\d{2}$/.test(t))continue;
+    const ctx=t+((rows[i-1]&&rows[i-1].flat.text)||'')+((rows[i-2]&&rows[i-2].flat.text)||'');
+    if(/价税合计|小写|大写|圆|整|元/.test(ctx)){
+      const m=t.match(/([\d,]{2,}\.\d{2})$/);
+      if(m){out.incTax=r2(num(m[1]));break}
+    }
+  }
+  return out;
+}
+/* OCR 常把一个数字拆成 "10"+"9."+"9009900990099" 这样的碎片。
+   以「上一片以小数点结尾 / 本片以小数点开头」为粘连信号把碎片并回一个数，
+   否则碎片会跨列被分走（曾导致 数量 变成 109）。 */
+function mergeNumberFragments(line){
+  const out=[];
+  (line.words||[]).slice().sort((a,b)=>a.x-b.x).forEach(w=>{
+    const t=String(w.text||''),prev=out[out.length-1];
+    if(prev){
+      const pt=String(prev.text||'');
+      const gap=w.x-(prev.x+(prev.w||0));
+      if(gap<28&&(/[.,]$/.test(pt)||/^[.]/.test(t))){
+        prev.text=pt+t;
+        prev.w=(w.x+(w.w||0))-prev.x;
+        return;
+      }
+    }
+    out.push({text:t,x:w.x,w:w.w||0,conf:w.conf});
+  });
+  return out;
+}
+/* 表头文字居中排，而明细数据多从列的最左端起排，直接用「表头中心的中点」当边界会把
+   名称末字切进规格列（铝块 → 铝 | 块）。这里改为：在每对相邻表头列心之间，
+   找明细区里「整列都空」的走廊（真正的列间隙），取最宽的一条作为边界。 */
+function snapColumnBoundaries(cols,bodyLines){
+  if(!cols||cols.length<2||!bodyLines||!bodyLines.length)return cols;
+  let W=0;
+  bodyLines.forEach(L=>(L.words||[]).forEach(w=>{W=Math.max(W,w.x+(w.w||0))}));
+  if(!W)return cols;
+  const N=Math.ceil(W)+2,cover=new Uint8Array(N);
+  bodyLines.forEach(L=>(L.words||[]).forEach(w=>{
+    const a=Math.max(0,Math.floor(w.x)),b=Math.min(N,Math.ceil(w.x+(w.w||0)));
+    for(let x=a;x<b;x++)cover[x]=1;
+  }));
+  const runs=[];
+  for(let x=1;x<N;x++){
+    if(cover[x])continue;
+    let y=x;while(y<N&&!cover[y])y++;
+    runs.push({c:(x+y-1)/2,w:y-x});
+    x=y;
+  }
+  const bounds=[];
+  for(let i=0;i<cols.length-1;i++){
+    const a=cols[i].cx,b=cols[i+1].cx;
+    let best=null;
+    runs.forEach(r=>{
+      if(r.w<8||r.c<=a||r.c>=b)return;
+      if(!best||r.w>best.w)best=r;
+    });
+    bounds.push(best?best.c:(a+b)/2);
+  }
+  for(let i=1;i<bounds.length;i++)bounds[i]=Math.max(bounds[i],bounds[i-1]+2);
+  bounds.forEach((b,i)=>{cols[i].br=b;cols[i+1].bl=b});
+  cols[0].bl=-Infinity;cols[cols.length-1].br=Infinity;
+  return cols;
+}
+/* 表头实在糊到读不出来时（小字票面），仍可用明细区里「整列都空」的走廊切出列，
+   再按数电票固定列序对应列名。只有在恰好切出 7 条边界（=8 列）时才采信。 */
+function bodyCorridorRuns(bodyLines){
+  if(!bodyLines||!bodyLines.length)return null;
+  let W=0;
+  bodyLines.forEach(L=>(L.words||[]).forEach(w=>{W=Math.max(W,w.x+(w.w||0))}));
+  if(!W)return null;
+  const N=Math.ceil(W)+2,cover=new Uint8Array(N);
+  bodyLines.forEach(L=>(L.words||[]).forEach(w=>{
+    const a=Math.max(0,Math.floor(w.x)),b=Math.min(N,Math.ceil(w.x+(w.w||0)));
+    for(let x=a;x<b;x++)cover[x]=1;
+  }));
+  let first=-1,last=-1;
+  for(let x=1;x<N;x++){if(!cover[x]){if(first<0)first=x;last=x}}
+  if(first<0)return null;
+  const cuts=[];
+  for(let x=first;x<=last;x++){
+    if(cover[x])continue;
+    let y=x;while(y<=last&&!cover[y])y++;
+    if(y-x>=8)cuts.push((x+y-1)/2);
+    x=y;
+  }
+  return cuts;
+}
+function inferColumnsFromBody(bodyLines){
+  let cuts=bodyCorridorRuns(bodyLines);
+  if(!cuts)return null;
+  const need=HEAD_ORDER.length-1;
+  /* 名称列文字逐行不同，字与字之间会留下假走廊，所以走廊往往多于 7 条；
+     右侧的数值列间隙最可靠，故超量时取最右侧的 7 条。 */
+  if(cuts.length>need)cuts=cuts.slice(cuts.length-need);
+  if(cuts.length!==need)return null;
+  const cols=HEAD_ORDER.map(key=>({key:key,x0:0,x1:0,cx:0,approx:true,bl:-Infinity,br:Infinity}));
+  cuts.forEach((c,i)=>{cols[i].br=c;cols[i+1].bl=c});
+  return cols;
+}
+function parseItemRowsFromLines(lines){
+  const rows=(lines||[]).map(L=>({line:L,text:joinWords(L.words||[]),flat:flatLine(L)}));
+  let hi=-1,cols=null;
+  /* 表头行识别用「去空白」文本匹配，否则「数 量」「单 价」会被空格打断而匹配失败 */
+  for(let i=0;i<Math.min(rows.length,16);i++){
+    const t=rows[i].flat.text;
+    if(!t)continue;
+    if(/名称|货物|品名/.test(t)&&/数量/.test(t)&&/(单价|金额)/.test(t)){
+      const c=headerColumns(rows[i].line,rows[i].flat);
+      if(!cols){hi=i;cols=c}
+      if(c&&c.length>=4){hi=i;cols=c;break}
+    }
+  }
+  /* 明细起始行：优先取表头下一行；表头没识别出来时，取第一条「像明细」的行（≥3 个数字），
+     否则票面上方那些标题/购销方乱码会被当成明细行。 */
+  let start=hi>=0?hi+1:-1;
+  if(start<0){
+    for(let i=0;i<rows.length;i++){
+      if(isItemLine(rows[i].line)){start=i;break}
+    }
+  }
+  if(start<0)start=rows.length;
+  /* 明细区范围：到「合计 / 价税合计 / 备注 / 开票人」或出现 ¥ 的行为止。
+     仅靠「合计」二字不可靠（tesseract 会读成「合it」），故用 ¥ 符号作为结构信号。 */
+  let stop=rows.length,sumIdx=-1;
+  for(let i=start;i<rows.length;i++){
+    const t=rows[i].flat.text;
+    if(!t)continue;
+    if(/合计|价税|小写|大写|备注|开票|收款|复核|销方|购方/.test(t)||/[¥￥]/.test(t)){stop=i;sumIdx=i;break}
+  }
+  const body=rows.slice(start,stop);
+  const cov=body.filter(r=>isItemLine(r.line)).map(r=>r.line);
+  if(cols&&cols.length>1)cols=snapColumnBoundaries(cols,cov.length?cov:body.map(r=>r.line));
+  else cols=inferColumnsFromBody(cov.length?cov:body.map(r=>r.line));
+  const items=[];
+  for(let i=start;i<stop;i++){
+    const t=rows[i].flat.text;
+    if(!t)continue;
+    const line={y:rows[i].line.y,words:mergeNumberFragments(rows[i].line)};
+    const it=cols?rowByColumns(line,cols):rowByTokens(line);
+    /* 折行续行：整行一个数字都没有，说明它只是上一行名称/规格的延续。
+       注意续行文字可能整体落在「规格」列带内（票面是在规格格内换行），
+       所以不能只看 it.name，要直接看原始格子。 */
+    const stat=numTokenStats(line);
+    if(!it||stat.n===0){
+      const prev=items[items.length-1];
+      if(prev&&stat.n===0){
+        const c=cols?cellsOfLine(line,cols):null;
+        const nm=cleanItemName((c&&c.name)||'');
+        const sp=String((c&&c.spec)||'').trim();
+        const tail=nm||sp||String(t||'');
+        /* 续行只可能是规格/名称的折行，绝不去动数量单价等数字单元格 */
+        if(tail){
+          if(nm&&!sp)prev.name=joinWrapped(prev.name,nm);
+          else prev.spec=joinWrapped(prev.spec,tail);
+        }
+      }
+      continue;
+    }
+    const hasNum=(it.qty!=null||it.amountExTax!=null||it.taxAmount!=null);
+    if(!hasNum&&(it.name||it.spec)){
+      /* 规格/名称在票面上折行：并入上一行，避免一条明细被拆成两行 */
+      const prev=items[items.length-1];
+      if(prev){
+        if(it.spec&&!it.name)prev.spec=joinWrapped(prev.spec,it.spec);
+        else if(it.name&&!it.spec)prev.name=joinWrapped(prev.name,it.name);
+        else prev.spec=joinWrapped(prev.spec,it.spec||it.name);
+      }
+      continue;
+    }
+    if(it.name||it.amountExTax!=null)items.push(it);
+  }
+  return{items:items,cols:cols,totals:totalsFromRows(rows,cols,hi,sumIdx)};
+}
+
+/* ---- 组装 / 含税折算 / 整单对账 ---- */
+function buildInvoice(meta,itemsRaw,file,kind,extra){
+  extra=extra||{};
+  const qr=extra.qr||null,tot=extra.totals||null;
+  /* 二维码里带的是权威值（20 位发票号码 / 开票日期 / 价税合计），优先采信 */
+  const qrFix=[];
+  if(qr){
+    if(qr.invoiceNo&&qr.invoiceNo!==String(meta.invoiceNo||'').trim())qrFix.push('发票号码');
+    if(qr.issueDate&&qr.issueDate!==meta.issueDate)qrFix.push('开票日期');
+    if(qr.totalIncTax!=null&&(meta.totalIncTax==null||Math.abs(qr.totalIncTax-meta.totalIncTax)>=0.005))qrFix.push('价税合计');
+    if(qr.invoiceNo)meta.invoiceNo=qr.invoiceNo;
+    if(qr.issueDate)meta.issueDate=qr.issueDate;
+    if(qr.totalIncTax!=null)meta.totalIncTax=qr.totalIncTax;
+    if(qr.invoiceCode&&!meta.invoiceCode)meta.invoiceCode=qr.invoiceCode;
+  }
+  if(tot){
+    if(meta.totalExTax==null&&tot.exTax!=null)meta.totalExTax=tot.exTax;
+    if(meta.totalTax==null&&tot.tax!=null)meta.totalTax=tot.tax;
+    if(meta.totalIncTax==null&&tot.incTax!=null)meta.totalIncTax=tot.incTax;
+  }
+  const inv={
+    invoiceNo:String(meta.invoiceNo||'').trim(),
+    invoiceCode:String(meta.invoiceCode||'').trim(),
+    invoiceKind:String(meta.invoiceKind||'').trim(),
+    issueDate:meta.issueDate||'',
+    buyer:meta.buyer||{name:'',taxNo:''},
+    seller:meta.seller||{name:'',taxNo:''},
+    totalExTax:meta.totalExTax==null?null:r2(meta.totalExTax),
+    totalTax:meta.totalTax==null?null:r2(meta.totalTax),
+    totalIncTax:meta.totalIncTax==null?null:r2(meta.totalIncTax),
+    items:[],src:{fileName:file?file.name:'',kind:kind,qr:qr?{how:qr.how,checkCode:qr.checkCode}:null,totals:tot},warnings:[]
+  };
+  if(qrFix.length)inv.warnings.push('已用发票二维码校正：'+qrFix.join('、'));
+  (itemsRaw||[]).forEach((it,idx)=>{
+    const no=idx+1;
+    let name=cleanItemName(it.name);
+    let qty=it.qty,price=it.priceExTax,amt=it.amountExTax,rate=it.taxRate,tax=it.taxAmount,inc=it.amountIncTax;
+    if(amt==null&&price!=null&&qty!=null)amt=r2(price*qty);
+    if(tax==null&&amt!=null&&rate!=null)tax=r2(amt*rate);
+    if(inc==null&&amt!=null)inc=r2(amt+(tax==null?0:tax));
+    if(inc==null&&price!=null&&qty!=null)inc=r2(price*qty*(rate!=null?1+rate:1));
+    if(inc==null){inv.warnings.push('第 '+no+' 行金额无法确定，已跳过');return}
+    if(inc<0||/折扣|优惠|红冲/.test(name)){
+      const prev=inv.items[inv.items.length-1];
+      if(prev){prev.amountIncTax=r2(prev.amountIncTax+inc);prev.priceIncTax=r2(prev.qty?prev.amountIncTax/prev.qty:prev.amountIncTax);inv.warnings.push('折扣 / 负数行已并入上一行')}
+      else inv.warnings.push('折扣 / 负数行无对应明细，已忽略');
+      return;
+    }
+    if(!name){name='（未识别名称）';inv.warnings.push('第 '+no+' 行未识别到名称')}
+    let Q=(qty==null||!Number(qty))?1:Number(qty);
+    if(qty==null||!Number(qty))inv.warnings.push('第 '+no+' 行无数量，按 1 计');
+    if(price==null&&amt!=null)price=r2(amt/Q);
+    inv.items.push({name:name,spec:String(it.spec||'').trim(),unit:String(it.unit||'').trim()||'件',
+      qty:Q,priceExTax:price,amountExTax:amt,taxRate:rate,taxAmount:tax,
+      amountIncTax:r2(inc),priceIncTax:r2(inc/Q)});
+  });
+  repairItems(inv);
+  reconcile(inv);
+  return inv;
+}
+/* 逐行勾稽：税额 = 金额 × 税率。OCR 在「税额」列最易丢末位（3.85→3.8、95.05→95.0），
+   用乘法反推可无损纠正，且不破坏与票面总额的关系。 */
+function repairItems(inv){
+  let n=0;
+  (inv.items||[]).forEach(it=>{
+    if(it.amountExTax!=null&&it.taxRate!=null){
+      const exp=r2(it.amountExTax*it.taxRate);
+      if(it.taxAmount==null||Math.abs(Number(it.taxAmount)-exp)>0.011){
+        if(it.taxAmount!=null&&Math.abs(Number(it.taxAmount)-exp)<1)n++;
+        it.taxAmount=exp;it.repaired=true;
+      }
+    }
+    if(it.amountExTax!=null)it.amountIncTax=r2(it.amountExTax+(Number(it.taxAmount)||0));
+    const q=Number(it.qty)||0;
+    it.priceIncTax=r2(q?it.amountIncTax/q:it.amountIncTax);
+  });
+  if(n)inv.warnings.push('已按「金额×税率」自动校正 '+n+' 行税额（多为末位识别偏差），请顺带核对');
+  return inv;
+}
+function reconcile(inv){
+  if(!inv.items.length)return;
+  const sEx=r2(inv.items.reduce((s,it)=>s+(Number(it.amountExTax)||0),0));
+  const sTax=r2(inv.items.reduce((s,it)=>s+(Number(it.taxAmount)||0),0));
+  const sum=r2(inv.items.reduce((s,it)=>s+(Number(it.amountIncTax)||0),0));
+  const T=inv.src&&inv.src.totals;
+  if(T){
+    if(T.exTax!=null&&Math.abs(sEx-T.exTax)>0.02)
+      inv.warnings.push('明细金额合计 '+sEx.toFixed(2)+' 与票面合计 '+T.exTax.toFixed(2)+' 不一致，请核对金额列');
+    if(T.tax!=null&&Math.abs(sTax-T.tax)>0.02)
+      inv.warnings.push('明细税额合计 '+sTax.toFixed(2)+' 与票面合计 '+T.tax.toFixed(2)+' 不一致，请核对税额列');
+  }
+  if(inv.totalIncTax==null){inv.warnings.push('未取得票面「价税合计」，未做整单对账');return}
+  const diff=r2(inv.totalIncTax-sum);
+  if(Math.abs(diff)<0.01)return;
+  if(Math.abs(diff)<=1){
+    /* 分位差：倒挤到最后一行，保持与票面价税合计一致 */
+    const last=inv.items[inv.items.length-1];
+    last.amountIncTax=r2((Number(last.amountIncTax)||0)+diff);
+    last.priceIncTax=r2(last.qty?last.amountIncTax/last.qty:last.amountIncTax);
+    inv.warnings.push('整单对账：与票面价税合计相差 '+diff.toFixed(2)+' 元，已倒挤到最后一行');
+  }else{
+    /* 大额差异绝不动数据，只告警（避免把识别错误悄悄写进台账） */
+    inv.warnings.push('明细含税合计 '+sum.toFixed(2)+' 与票面价税合计 '+inv.totalIncTax.toFixed(2)
+      +' 相差 '+diff.toFixed(2)+' 元（疑似识别有误，未自动改动，请务必核对）');
+  }
+}
+function buildFromLines(lines,file,kind,extra){
+  extra=extra||{};
+  const raw=(lines||[]).map(L=>joinWords(L.words||[])).join('\n');
+  const flat=stripWs(raw);
+  if(flat.length<10)throw new Error('未识别到文本内容（图片过糊或非发票）');
+  /* OCR 可能把「发票」读成「炎丘」之类，故关键词之外再留一个结构兜底：
+     含 15~20 位纳税人识别号 + 两位小数金额 + 中文，就认为是一张票。 */
+  const hasKw=/发票|价税合计|纳税人识别|销售方|购买方|金额|货物|税额|开票日期/.test(flat);
+  const hasShape=/[0-9A-Z]{15,20}/.test(flat)&&/[0-9]+\.[0-9]{2}/.test(flat)&&/[\u4e00-\u9fa5]/.test(flat);
+  if(!hasKw&&!hasShape)throw new Error('未识别为发票内容');
+  const meta=extractMetaFromText(raw);
+  const pr=parseItemRowsFromLines(lines);
+  const inv=buildInvoice(meta,pr.items,file,kind,{qr:extra.qr,totals:pr.totals});
+  if(!inv.items.length){
+    /* 明细区没解析出来时，用整行文本兜底扫一遍 */
+    const alt=parseLooseItems(lines);
+    if(alt.length){inv.items=alt;repairItems(inv);reconcile(inv);inv.warnings.push('明细行为兜底解析，请重点核对')}
+  }
+  const confs=(lines||[]).reduce((a,L)=>a.concat((L.words||[]).map(w=>w.conf)),[]).filter(c=>typeof c==='number'&&c>0);
+  if(confs.length){
+    const avg=confs.reduce((a,b)=>a+b,0)/confs.length;
+    inv.src.ocrConf=Math.round(avg);
+    if(avg<INV_LOW_CONF)inv.warnings.push('识别置信度偏低（'+Math.round(avg)+'%），请逐字核对');
+  }
+  if(!inv.items.length)inv.warnings.push('未解析到明细行，请在下方表单手工补充');
+  return inv;
+}
+/* 兜底：表头没识别出来时，按「行尾一串数字」的形态还原明细行 */
+function parseLooseItems(lines){
+  const out=[];
+  (lines||[]).forEach(L=>{
+    const it=rowByTokens(L);
+    if(it&&it.name&&(it.amountExTax!=null||it.qty!=null))out.push(it);
+  });
+  return out;
+}
+
+/* ---- PDF / 图片 解析 ---- */
+async function extractEmbeddedXml(pdf){
+  let atts={};
+  try{atts=(await pdf.getAttachments())||{}}catch(e){return null}
+  for(const key of Object.keys(atts)){
+    const a=atts[key]||{};
+    let raw=a.content;
+    if(!raw&&pdf.getAttachmentContent){try{raw=await pdf.getAttachmentContent(key)}catch(e){}}
+    if(!raw)continue;
+    let text='';
+    try{
+      if(typeof raw==='string')text=/^\s*</.test(raw)?raw:decodeURIComponent(escape(atob(raw)));
+      else text=new TextDecoder('utf-8').decode(raw);
+    }catch(e){continue}
+    if(/invoice|发票|价税合计/i.test(text.slice(0,2000)))return{name:a.filename||key,text:text};
+  }
+  return null;
+}
+async function parseInvoicePDF(file){
+  const pdfjs=await ensurePdfJs();
+  const data=new Uint8Array(await file.arrayBuffer());
+  const pdf=await pdfjs.getDocument({data:data,isEvalSupported:false}).promise;
+  try{
+    const emb=await extractEmbeddedXml(pdf);
+    if(emb){
+      const inv=parseInvoiceXMLText(emb.text,file);
+      inv.src.kind='pdf-xml';inv.src.attach=emb.name;return inv;
+    }
+  }catch(e){/* 内嵌 XML 不符则继续 */}
+  const lines=await pdfWordLines(pdf);
+  const raw=lines.map(L=>joinWords(L.words)).join('\n');
+  if(raw.replace(/\s/g,'').length>=15){
+    try{return buildFromLines(lines,file,'pdf-text')}catch(e){/* 文本层不可用则转 OCR */}
+  }
+  return await ocrFromPdf(pdf,file);
+}
+function cloneCanvas(src){
+  const cv=document.createElement('canvas');cv.width=src.width;cv.height=src.height;
+  cv.getContext('2d').drawImage(src,0,0);return cv;
+}
+/* 给一次 OCR 结果打分，用于在多种「预处理 × PSM」组合中挑最优解。
+   关键：不能只看「读出了几行」——读乱的一次可能凭空多出几行而分数更高，
+   所以改为看「结果自身是否自洽」：行是不是像明细、税额是否等于金额×税率、
+   明细合计是否等于票面价税合计。自洽的一次才算好的一次。 */
+function scoreInvoice(inv){
+  if(!inv)return -1e9;
+  const items=inv.items||[];
+  /* 行数收益封顶，避免「多读几行垃圾」被当成更好 */
+  let s=Math.min(items.length,8)*6;
+  if(/^\d{20}$/.test(String(inv.invoiceNo||'')))s+=18;
+  else if(inv.invoiceNo)s+=6;
+  if(/^\d{4}-\d{2}-\d{2}$/.test(String(inv.issueDate||'')))s+=10;
+  if(inv.totalIncTax!=null)s+=12;
+  if(inv.totalExTax!=null)s+=6;
+  if(inv.seller&&inv.seller.name)s+=6;
+  /* 像真明细的行：名称含中文、数量与金额为正 */
+  const good=items.filter(it=>it&&/[\u4e00-\u9fa5]/.test(it.name||'')&&it.amountExTax>0&&it.qty>0).length;
+  s+=good*6;
+  /* 行级勾稽：税额 应等于 金额 × 税率 */
+  let okRows=0;
+  items.forEach(it=>{
+    if(!it||!(it.amountExTax>0)||it.taxAmount==null||it.taxRate==null)return;
+    if(Math.abs(r2(it.amountExTax*it.taxRate)-it.taxAmount)<=0.02)okRows++;
+  });
+  if(items.length)s+=Math.round((okRows/items.length)*10);
+  /* 整单对账：明细含税合计 应与票面价税合计一致，差得越远扣得越狠 */
+  const sumInc=items.reduce((a,it)=>a+r2((it.amountExTax||0)+(it.taxAmount||0)),0);
+  if(inv.totalIncTax!=null&&items.length){
+    const d=Math.abs(sumInc-inv.totalIncTax);
+    s+=d<=0.5?14:(d<=5?6:(d<=100?0:-14));
+  }
+  if(((inv.src&&inv.src.ocrConf)||0)>=INV_LOW_CONF)s+=5;
+  s-=(inv.warnings||[]).filter(w=>/不一致|相差|未解析到/.test(w)).length*6;
+  return s;
+}
+/* 逐级尝试：原图 PSM6（最稳）→ 原图 PSM4 → 二值化 PSM6；够好就停，兼顾速度。
+   阈值取 50：一张能对上账的正常发票一般在 60 以上，读坏的很难到 50。 */
+async function ocrBestFor(canvases,file,kind,extra){
+  extra=extra||{};
+  const mk=(tag,psm,bin)=>async()=>{
+    const all=[];
+    for(const cv of canvases){
+      const img=bin?preprocessCanvas(cloneCanvas(fitCanvas(cv,INV_MAX_EDGE))):fitCanvas(cv,INV_MAX_EDGE);
+      const data=await ocrRecognize(img,psm);
+      all.push(...tsvToLines(data.tsv));
+    }
+    if(!all.length)return null;
+    const inv=buildFromLines(all,file,kind,extra);
+    inv.src.variant=tag;
+    return inv;
+  };
+  const tries=[mk('原图·PSM6',6,false),mk('原图·PSM4',4,false),mk('二值化·PSM6',6,true)];
+  let best=null,bestScore=-1e9;
+  for(const run of tries){
+    let inv=null;
+    try{inv=await run()}catch(e){inv=null}
+    const sc=scoreInvoice(inv);
+    if(sc>bestScore){bestScore=sc;best=inv}
+    if(bestScore>=50)break;
+  }
+  if(!best)throw new Error('OCR 未能识别出有效内容，请换更清晰的发票文件');
+  return best;
+}
+async function ocrFromPdf(pdf,file){
+  await ensureTesseract();
+  const canvases=[];
+  for(let p=1;p<=pdf.numPages;p++){
+    setInvProgress(8);
+    const page=await pdf.getPage(p);
+    const vp1=page.getViewport({scale:1});
+    const scale=Math.max(1.5,Math.min(3.2,INV_MAX_EDGE/Math.max(vp1.width,vp1.height)));
+    const vp=page.getViewport({scale:scale});
+    const cv=document.createElement('canvas');
+    cv.width=Math.round(vp.width);cv.height=Math.round(vp.height);
+    await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
+    canvases.push(cv);
+    if(page.cleanup)page.cleanup();
+  }
+  const qr=canvases.length?await readInvoiceQR(canvases[0]):null;
+  setInvProgress(null);
+  return ocrBestFor(canvases,file,'pdf-ocr',{qr:qr});
+}
+async function parseInvoiceImage(file){
+  await ensureTesseract();
+  setInvProgress(10);
+  const img=await loadImage(file);
+  const cv=fitCanvas(img,INV_MAX_EDGE);
+  const qr=await readInvoiceQR(cv);
+  setInvProgress(null);
+  return ocrBestFor([cv],file,'img-ocr',{qr:qr});
+}
+async function parseInvoiceFile(file){
+  const nm=(file.name||'').toLowerCase();
+  try{
+    if(/\.xml$/i.test(nm))return parseInvoiceXMLText(await file.text(),file);
+    if(/\.pdf$/i.test(nm))return await parseInvoicePDF(file);
+    if(/\.(jpe?g|png|bmp|webp)$/i.test(nm))return await parseInvoiceImage(file);
+    throw new Error('不支持的格式（支持 PDF / XML / JPG / PNG / BMP / WEBP）');
+  }catch(e){e.fileName=file.name;throw e}
+}
+
+/* ---- 填入开单表单 ---- */
+function pickInvMeta(v){
+  return{no:v.invoiceNo||'',code:v.invoiceCode||'',kind:v.invoiceKind||invKindName(v.src&&v.src.kind),
+    issueDate:v.issueDate||'',seller:v.seller||{name:'',taxNo:''},buyer:v.buyer||{name:'',taxNo:''},
+    totalExTax:v.totalExTax,totalTax:v.totalTax,totalIncTax:v.totalIncTax,
+    src:v.src?{fileName:v.src.fileName,kind:v.src.kind}:null,parsedAt:Date.now()};
+}
+function fillInvoiceIntoDraft(list,opt){
+  opt=opt||{};
+  const rows=[];
+  (list||[]).forEach(inv=>{
+    (inv.items||[]).forEach(it=>{
+      const total=r2(Number(it.amountIncTax)||0);
+      let q=Number(it.qty)||0;if(!q)q=1;
+      rows.push({name:String(it.name||'').trim(),spec:it.spec||'',unit:it.unit||'件',
+        qty:String(q),price:String(r2(total/q)),total:String(total),tLock:true});
+    });
+  });
+  const valid=rows.filter(r=>r.name);
+  if(!valid.length){toast('没有可填入的明细','err');return false}
+  draft.items=opt.append?draft.items.filter(it=>(it.name||'').trim()).concat(valid):valid;
+  const ds=(list||[]).map(v=>v.issueDate).filter(Boolean).sort();
+  if(ds.length)draft.date=ds[ds.length-1];
+  const metas=(list||[]).map(pickInvMeta);
+  draft.invoices=opt.append?(draft.invoices||[]).concat(metas):metas;
+  printRec=null;
+  renderForm();renderPreview();markDirty();
+  return true;
+}
+function invoiceHTML(rec){
+  const arr=rec&&rec.invoice;
+  if(!Array.isArray(arr)||!arr.length)return '';
+  return '<div class="inv-meta" style="display:block">🧾 发票信息：'+arr.map(v=>
+    '<div><b>'+esc(v.no||'—')+'</b>'
+    +(v.kind?' · '+esc(v.kind):'')
+    +(v.issueDate?' · '+esc(v.issueDate):'')
+    +(v.seller&&v.seller.name?' · 销售方 '+esc(v.seller.name):'')
+    +(v.buyer&&v.buyer.name?' · 购买方 '+esc(v.buyer.name):'')
+    +(v.totalIncTax!=null?' · 价税合计 '+money(v.totalIncTax):'')
+    +'</div>').join('')+'</div>';
+}
+
+/* ---- 发票上传 / 校对 UI ---- */
+/* 规格里出现 # % 或「4 位以上、且不贴着分隔符的连续数字」，多半是 * 分隔符被读丢了
+   （55*55*20 → 554554#20、60*80 → 60480），也可能整个丢失并粘连（40*40 → 40440）。
+   只在复核面板上做个提示底色，绝不自动改动数据。 */
+function specSuspect(s){
+  const t=String(s==null?'':s).trim();
+  if(!t)return false;
+  if(/[#＃%]/.test(t))return true;
+  return /(^|[^\d*])\d{4,}(?![\d*])/.test(t);
+}
+/* 常见计量单位；单位列读成单字且不在表里时提示核对 */
+const UNIT_KNOWN='支把个件块段套张只台米卷包条双副组盒瓶桶箱袋根片对束斤克吨升枚粒罐听盘圈扎捆沓摞顶辆架部门座床面扇盏颗管盘筐篮缸壶筒'.split('');
+function unitSuspect(u){
+  const t=String(u==null?'':u).trim();
+  return t.length===1&&UNIT_KNOWN.indexOf(t)<0;
+}
+function invoiceReviewHTML(inv,ii){
+  const ic=inv.src&&inv.src.ocrConf;
+  const susStyle=' style="background:var(--amber-soft)" title="规格疑似有字符被识别错（* 分隔符可能丢了），请对照发票核对"';
+  const rows=inv.items.map((it,ri)=>
+    '<tr><td>'+(ri+1)+'</td>'
+    +'<td><input data-inv="'+ii+'" data-ri="'+ri+'" data-f="name" value="'+esc(it.name)+'"></td>'
+    +'<td><input data-inv="'+ii+'" data-ri="'+ri+'" data-f="spec" value="'+esc(it.spec)+'"'
+      +(specSuspect(it.spec)?susStyle:'')+'></td>'
+    +'<td><input data-inv="'+ii+'" data-ri="'+ri+'" data-f="unit" value="'+esc(it.unit)+'"'
+      +(unitSuspect(it.unit)?' style="background:var(--amber-soft);min-width:40px" title="单位疑似识别有误，请核对"':' style="min-width:40px"')+'></td>'
+    +'<td><input data-inv="'+ii+'" data-ri="'+ri+'" data-f="qty" value="'+esc(String(it.qty))+'"></td>'
+    +'<td><input data-inv="'+ii+'" data-ri="'+ri+'" data-f="amountIncTax" value="'+esc(fmt2(it.amountIncTax))+'"'
+      +(it.repaired?' title="税额已按「金额×税率」自动校正" style="background:var(--amber-soft)"':'')+'></td></tr>').join('');
+  return '<div class="inv-rev">'
+    +'<h4>🧾 '+(ii+1)+'. '+esc(invKindName(inv.src&&inv.src.kind))
+      +(inv.src&&inv.src.qr?'<span class="inv-step">二维码已校验</span>':'')
+      +(ic?'<span class="inv-step">置信度 '+ic+'%</span>':'')
+      +(inv.warnings.length?'<span class="warn-flag">'+inv.warnings.length+' 项待核</span>':'')
+    +'</h4>'
+    +'<div class="inv-meta">'
+      +'<label class="fld"><span>发票号码</span><input data-inv="'+ii+'" data-ri="" data-f="invoiceNo" value="'+esc(inv.invoiceNo)+'"></label>'
+      +'<label class="fld"><span>开票日期</span><input data-inv="'+ii+'" data-ri="" data-f="issueDate" value="'+esc(inv.issueDate)+'"></label>'
+      +'<label class="fld"><span>销售方</span><input data-inv="'+ii+'" data-ri="" data-f="sellerName" value="'+esc(inv.seller&&inv.seller.name||'')+'"></label>'
+      +'<label class="fld"><span>价税合计</span><input data-inv="'+ii+'" data-ri="" data-f="totalIncTax" value="'+esc(inv.totalIncTax==null?'':fmt2(inv.totalIncTax))+'"></label>'
+    +'</div>'
+    +'<table><thead><tr><th>#</th><th>名称</th><th>型号规格</th><th>单位</th><th>数量</th><th>含税金额</th></tr></thead><tbody>'
+    +(rows||'<tr><td colspan="6" style="color:var(--sub)">未识别到明细，请在下方开单表单手工补充</td></tr>')
+    +'</tbody></table>'
+    +(inv.warnings.length?'<div class="inv-wlist">⚠ '+inv.warnings.map(esc).join('；')+'</div>':'')
+    +'</div>';
+}
+function renderInvoicePanel(){
+  const listEl=$('#invList'),prevEl=$('#invPrev'),actEl=$('#invActions');
+  if(!listEl||!prevEl||!actEl)return;
+  if(!invBatches||!invBatches.files.length){listEl.innerHTML='';prevEl.innerHTML='';actEl.innerHTML='';return}
+  listEl.innerHTML=invBatches.files.map(f=>
+    '<span class="file-pill'+(f.ok?'':' bad')+'">📄 '+esc(f.name)+' '
+    +(f.busy?'<b>解析中…</b>':(f.ok?'<b>'+f.n+' 行</b>'+(f.warn?'<span class="warn-flag">'+f.warn+' 项待核</span>':''):'✘ '+esc(f.msg)))
+    +'</span>').join('');
+  const invs=invBatches.invs;
+  if(!invs.length){
+    prevEl.innerHTML='<div class="empty">未解析出发票，请确认文件类型（PDF / XML / 图片）</div>';
+    actEl.innerHTML='<button class="btn danger" id="invReset">清空重选</button>';
+    bindInvActions();return;
+  }
+  prevEl.innerHTML=invs.map(invoiceReviewHTML).join('');
+  let acts='';
+  if(invMode==='each'){
+    const i=Math.min(invIdx,invs.length-1);
+    if(invs.length>1)acts+='<span class="inv-step">第 '+(i+1)+' / '+invs.length+' 张</span>';
+    acts+='<button class="btn primary" id="invFillCur">⬇ 填入开单表单</button>';
+    if(invs.length>1)acts+='<button class="btn" id="invPrevBtn" '+(i<=0?'disabled':'')+'>上一张</button>'
+      +'<button class="btn" id="invNext" '+(i>=invs.length-1?'disabled':'')+'>下一张</button>';
+  }else{
+    const rows=invs.reduce((s,v)=>s+v.items.length,0);
+    acts+='<button class="btn primary" id="invFillAll">⬇ 合并填入开单表单（'+invs.length+' 张 · '+rows+' 行）</button>';
+  }
+  acts+='<button class="btn danger" id="invReset">清空重选</button>';
+  actEl.innerHTML=acts;
+  bindInvActions();
+}
+function bindInvActions(){
+  const a=$('#invFillAll');if(a)a.onclick=()=>{if(fillInvoiceIntoDraft(invBatches.invs,{}))toast('已合并填入开单表单，请核对后保存')};
+  const c=$('#invFillCur');if(c)c.onclick=()=>{
+    const i=Math.min(invIdx,invBatches.invs.length-1),inv=invBatches.invs[i];
+    if(inv&&fillInvoiceIntoDraft([inv],{}))toast('已填入第 '+(i+1)+' 张');
+  };
+  const p=$('#invPrevBtn');if(p)p.onclick=()=>{invIdx=Math.max(0,invIdx-1);renderInvoicePanel()};
+  const n=$('#invNext');if(n)n.onclick=()=>{invIdx=Math.min(invBatches.invs.length-1,invIdx+1);renderInvoicePanel()};
+  const r=$('#invReset');if(r)r.onclick=()=>resetInvoices();
+}
+function resetInvoices(){invBatches=null;invQueue=[];invIdx=0;setInvProgress(null);renderInvoicePanel()}
+function refreshItemInc(it){
+  const q=Number(it.qty)||1;
+  if(it.amountExTax!=null){
+    if(it.taxRate!=null)it.taxAmount=r2(it.amountExTax*it.taxRate);
+    it.amountIncTax=r2(it.amountExTax+(it.taxAmount==null?0:it.taxAmount));
+  }else if(it.priceExTax!=null){
+    it.amountExTax=r2(it.priceExTax*q);
+    if(it.taxRate!=null)it.taxAmount=r2(it.amountExTax*it.taxRate);
+    it.amountIncTax=r2(it.amountExTax+(it.taxAmount==null?0:it.taxAmount));
+  }
+  it.priceIncTax=r2(q?(Number(it.amountIncTax)||0)/q:(Number(it.amountIncTax)||0));
+}
+function onInvoiceReviewEdit(e){
+  const inp=e.target.closest('input[data-f]');if(!inp||!invBatches)return;
+  const inv=invBatches.invs[+inp.dataset.inv];if(!inv)return;
+  const f=inp.dataset.f,ri=inp.dataset.ri;
+  if(ri!==''&&ri!=null){
+    const it=inv.items[+ri];if(!it)return;
+    if(f==='qty'||f==='priceExTax'){it[f]=num(inp.value);it.amountExTax=null;refreshItemInc(it)}
+    else if(f==='amountExTax'){it.amountExTax=num(inp.value);it.priceExTax=null;refreshItemInc(it)}
+    else if(f==='amountIncTax'){it.amountIncTax=num(inp.value);
+      it.priceIncTax=r2((Number(it.qty)||1)?(Number(it.amountIncTax)||0)/(Number(it.qty)||1):(Number(it.amountIncTax)||0))}
+    else it[f]=inp.value;
+  }else if(f==='sellerName'){inv.seller=inv.seller||{};inv.seller.name=inp.value}
+  else if(f==='buyerName'){inv.buyer=inv.buyer||{};inv.buyer.name=inp.value}
+  else if(f==='totalIncTax'){inv.totalIncTax=num(inp.value);inv.warnings=inv.warnings.filter(w=>!/对账|倒挤/.test(w));reconcile(inv)}
+  else if(f==='issueDate'){inv.issueDate=normDateStr(inp.value)||inp.value}
+  else inv[f]=inp.value;
+  renderInvoicePanel();
+}
+async function addInvoiceFiles(fileList){
+  const files=[...fileList].filter(f=>/\.(pdf|xml|jpe?g|png|bmp|webp)$/i.test(f.name||''));
+  if(!files.length){toast('请选择 PDF / XML / 图片文件','err');return}
+  if(!invBatches)invBatches={files:[],invs:[]};
+  for(const f of files){
+    const pill={name:f.name,ok:false,busy:true,msg:'解析中…',n:0,warn:0};
+    invBatches.files.push(pill);renderInvoicePanel();
+    try{
+      const inv=await parseInvoiceFile(f);
+      pill.ok=true;pill.msg='';pill.n=inv.items.length;pill.warn=inv.warnings.length;
+      invBatches.invs.push(inv);
+    }catch(e){pill.ok=false;pill.msg=e.message||String(e)}
+    pill.busy=false;setInvProgress(null);renderInvoicePanel();
+  }
+  invQueue=invBatches.invs.slice();invIdx=0;
+  renderInvoicePanel();
+  const okN=invBatches.files.filter(f=>f.ok).length,failN=invBatches.files.length-okN;
+  toast('发票解析完成：成功 '+okN+' 张'+(failN?'，失败 '+failN+' 张（见红标）':''));
+}
+function bindInvoiceUI(){
+  const f=$('#invFile');
+  if(f)f.addEventListener('change',e=>{const files=e.target.files;if(files&&files.length)addInvoiceFiles(files);e.target.value=''});
+  const dz=$('#invDrop');
+  if(dz){
+    dz.addEventListener('click',()=>f&&f.click());
+    dz.addEventListener('dragover',e=>{e.preventDefault();e.stopPropagation();dz.classList.add('drag')});
+    dz.addEventListener('dragleave',()=>dz.classList.remove('drag'));
+    dz.addEventListener('drop',e=>{e.preventDefault();e.stopPropagation();dz.classList.remove('drag');
+      if(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files.length)addInvoiceFiles(e.dataTransfer.files)});
+  }
+  const clr=$('#invClear');if(clr)clr.onclick=()=>{if(invBatches)resetInvoices()};
+  $$('input[name="invMode"]').forEach(r=>r.addEventListener('change',e=>{invMode=e.target.value;invIdx=0;renderInvoicePanel()}));
+  const prev=$('#invPrev');if(prev)prev.addEventListener('change',onInvoiceReviewEdit);
+}
+
 /* ================= 台账 ================= */
 function yearsList(){const s=new Set(activeRecords().map(r=>(r.date||'').slice(0,4)));s.add(String(new Date().getFullYear()));return[...s].filter(Boolean).sort().reverse()}
 function agentList(){return[...new Set(activeRecords().map(personOf).filter(Boolean))].sort()}
@@ -958,7 +2281,7 @@ function filtered(){
 function detailHTML(rec){
   return `<div class="d-items"><table><thead><tr><th>名称</th><th>型号规格</th><th>数量</th><th>单位</th><th>单价</th><th>总价</th></tr></thead><tbody>${
     rec.items.map(it=>`<tr><td>${esc(it.name)}</td><td>${esc(it.spec)}</td><td>${it.qty}</td><td>${esc(it.unit)}</td><td>${fmt2(it.price)}</td><td>${fmt2(it.total)}</td></tr>`).join('')
-  }</tbody></table></div>`;
+  }</tbody></table></div>`+invoiceHTML(rec);
 }
 function renderLedger(){
   const selY=$('#fYear'),selM=$('#fMonth'),selT=$('#fTypeF'),selA=$('#fTeacherF'),selG=$('#fGroupF');
@@ -980,7 +2303,7 @@ function renderLedger(){
 
   $('#ledgerBody').innerHTML=list.length?list.map(r=>`
     <tr class="lrow" data-id="${r.id}">
-      <td>${esc(r.date)}</td>
+      <td>${esc(r.date)}${r.invoice&&r.invoice.length?' <span title="含发票信息">🧾</span>':''}</td>
       <td>${r.type?`<span class="badge b-${esc(r.type)}">${esc(r.type)}</span>`:'<span class="badge b-未标注">未标注</span>'}</td>
       <td>${esc(personOf(r))||'—'}</td>
       <td><select class="grp-sel" data-id="${r.id}" title="移动到其他组">${allGroups().map(g=>`<option value="${esc(g)}" ${g===groupOf(r)?'selected':''}>${esc(g)}</option>`).join('')}</select></td>
@@ -1060,15 +2383,19 @@ function exportLedgerExcel(list,fname){
   const th={style:'thin',color:{rgb:'B7C2A8'}};
   const bd={top:th,bottom:th,left:th,right:th};
   const wb=XLSX.utils.book_new();
-  const aoa=[['日期','经费性质','经办人','分组','名称','型号规格','数量','单位','单价','总价','单据合计']];
-  list.forEach(r=>r.items.forEach(it=>aoa.push([r.date,r.type,personOf(r),groupOf(r),it.name,it.spec,it.qty,it.unit,it.price,it.total,r.total])));
+  const aoa=[['日期','经费性质','经办人','分组','名称','型号规格','数量','单位','单价','总价','单据合计','发票号码','开票日期','销售方','发票类型']];
+  list.forEach(r=>r.items.forEach(it=>aoa.push([r.date,r.type,personOf(r),groupOf(r),it.name,it.spec,it.qty,it.unit,it.price,it.total,r.total,
+    (r.invoice||[]).map(v=>v.no).filter(Boolean).join(';'),
+    (r.invoice||[]).map(v=>v.issueDate).filter(Boolean).join(';'),
+    (r.invoice||[]).map(v=>v.seller&&v.seller.name).filter(Boolean).join(';'),
+    (r.invoice||[]).map(v=>v.kind).filter(Boolean).join(';')])));
   const ws=XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols']=[{wch:11},{wch:8},{wch:10},{wch:10},{wch:18},{wch:16},{wch:7},{wch:6},{wch:9},{wch:10},{wch:11}];
+  ws['!cols']=[{wch:11},{wch:8},{wch:10},{wch:10},{wch:18},{wch:16},{wch:7},{wch:6},{wch:9},{wch:10},{wch:11},{wch:22},{wch:11},{wch:24},{wch:22}];
   const hStyle={font:{name:'等线',sz:11,bold:true},fill:{patternType:'solid',fgColor:{rgb:'E3EBDB'}},border:bd,alignment:{horizontal:'center',vertical:'center'}};
-  for(let C=0;C<=10;C++){const a=XLSX.utils.encode_cell({r:0,c:C});if(ws[a])ws[a].s=hStyle}
+  for(let C=0;C<=14;C++){const a=XLSX.utils.encode_cell({r:0,c:C});if(ws[a])ws[a].s=hStyle}
   const dStyle={font:{name:'等线',sz:10},border:bd};
   const rng=ws['!ref']&&XLSX.utils.decode_range(ws['!ref']);
-  if(rng)for(let R=1;R<=rng.e.r;R++)for(let C=0;C<=10;C++){
+  if(rng)for(let R=1;R<=rng.e.r;R++)for(let C=0;C<=14;C++){
     const a=XLSX.utils.encode_cell({r:R,c:C});
     if(ws[a])ws[a].s=dStyle;else ws[a]={t:'s',v:'',s:dStyle};
   }
@@ -1318,12 +2645,14 @@ function applySettingsUI(){
 }
 function bind(){
   $$('nav button').forEach(b=>b.onclick=()=>switchPage(b.dataset.page));
+  bindInvoiceUI();
   /* 输入监听支持 "=公式"（数量/单价/总价）——公式输入期间显示公式并实时计算入合计，失焦/回车后转为结果数字 */
   $('#itemsBox').addEventListener('input',e=>{
     const inp=e.target.closest('input');if(!inp)return;
     const row=e.target.closest('.item-row');const idx=+row.dataset.idx,field=inp.dataset.field;
     printRec=null;
     const raw=inp.value,isNum=['qty','price','total'].includes(field);
+    if(isNum&&draft.items[idx])draft.items[idx].tLock=false;   /* 手动改数即解除发票锁定 */
     if(isNum&&raw.startsWith('=')){
       const ev=evalExpr(raw);
       if(ev!=null){draft.items[idx][field]=String(ev);linkage(idx,field)}
@@ -1518,7 +2847,7 @@ function bind(){
   $('#verSet').textContent='当前版本：'+APP_VERSION;
   console.log('%c特种耗材出入库系统 '+APP_VERSION,'color:#5C8A64;font-weight:bold');
   bind();applyPrintLayout();applySettingsUI();
-  renderForm();renderPreview();refreshData();
+  renderForm();renderPreview();refreshData();renderInvoicePanel();
   setTimeout(()=>autoSync(true),1000);
 })();
 </script>
